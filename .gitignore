@@ -7,3 +7,4 @@ Thumbs.db
 .env
 bench-app/node_modules/
 bench-app/dist/
+*.tsbuildinfo
