@@ -26,13 +26,14 @@ export type Message =
       edit?: Edit;
     };
 
-export type SessionGroup = '智能体' | '今天' | '昨天' | '近 7 天';
+export type SessionGroup = '今天' | '昨天' | '近 7 天' | '更早';
 export type Session = {
   id: string;
   title: string;
   summary: string;
   time: string;
   group: SessionGroup;
+  workspace?: string;
 };
 
 export type Kpi = { label: string; value: string; delta: string };
@@ -48,3 +49,6 @@ export type PreviewData = {
 };
 
 export type Suggestion = { icon: string; title: string; desc: string };
+
+// 真实文件条目（来自 tools.cjs listFiles）
+export type FileEntry = { name: string; path: string; type: 'dir' | 'file'; size: number };

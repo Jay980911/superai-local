@@ -100,7 +100,7 @@ export function AgentMessage({
 }) {
   return (
     <div className="msg bot">
-      <div className="who"><span className="st">B</span>bench · {msg.time}</div>
+      <div className="who"><span className="st">S</span>SuperAI · {msg.time}</div>
       <div className="body">
         {msg.text && <p>{msg.text}</p>}
         {msg.edit && (
@@ -164,7 +164,7 @@ export function EmptyState({ onPick }: { onPick: (text: string) => void }) {
       <div className="glyph">✦</div>
       <h2>今天想做点什么？</h2>
       <p>
-        告诉我要达成的结果就好。案台会自己拆解步骤、调用技能、生成文件——<br />
+        告诉我要达成的结果就好。SuperAI 会自己拆解步骤、调用技能、生成文件——<br />
         所有操作都限定在你授权的工作目录里。
       </p>
       <div className="sugg">

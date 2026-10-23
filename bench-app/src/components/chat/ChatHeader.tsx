@@ -1,17 +1,24 @@
 // 会话头部 · §6
-import { WORKSPACE } from '../../data/mock';
-
 export default function ChatHeader({
   title,
   meta,
   side,
   onOpenSide,
+  workspace,
+  onPickWorkspace,
+  rightSide,
+  onOpenRight,
 }: {
   title: string;
   meta: string;
   side: 'on' | 'off';
   onOpenSide: () => void;
+  workspace: string;
+  onPickWorkspace: () => void;
+  rightSide: 'on' | 'off';
+  onOpenRight: () => void;
 }) {
+  const ws = workspace || '未选择工作目录';
   return (
     <div className="chat-head">
       <button
@@ -27,9 +34,15 @@ export default function ChatHeader({
         <div className="meta">{meta}</div>
       </div>
       <div className="grow" />
-      <span className="chip dir">📁 {WORKSPACE}</span>
-      <button className="icon-btn" title="在新窗口打开">↗</button>
-      <button className="icon-btn" title="更多">⋯</button>
+      <span className="chip dir" title="点击更改工作目录" onClick={onPickWorkspace}>📁 {ws} ▾</span>
+      <button
+        className="icon-btn right-open"
+        title="展开成果面板"
+        onClick={onOpenRight}
+        style={{ display: rightSide === 'off' ? 'grid' : 'none' }}
+      >
+        «
+      </button>
     </div>
   );
 }

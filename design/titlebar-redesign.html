@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>标题栏改造预览 v3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600&family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:  oklch(0.976 0.006 95);
+  --card:   oklch(0.993 0.002 95);
+  --soft:   oklch(0.951 0.006 95);
+  --ink:    oklch(0.205 0.008 255);
+  --ink-2:  oklch(0.455 0.008 255);
+  --ink-3:  oklch(0.575 0.008 255);
+  --rule:   oklch(0.912 0.005 95);
+  --rule-2: oklch(0.866 0.005 95);
+  --seal:   oklch(0.228 0.010 255);
+  --seal-soft: oklch(0.938 0.005 95);
+  --blue-soft: oklch(0.952 0.012 240);
+  --font-display: 'Noto Serif CJK SC','Noto Serif SC','Songti SC',serif;
+  --font-body: 'Space Grotesk','Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif;
+  --font-mono: 'JetBrains Mono','SFMono-Regular',ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:var(--font-body);color:var(--ink);background:#1e1e2e;
+  display:flex;justify-content:center;padding:30px;min-height:100vh;
+}
+
+/* ===== 模拟 Windows 11 窗口 ===== */
+.window{
+  width:1100px;height:680px;background:var(--paper);
+  border-radius:8px;overflow:hidden;
+  box-shadow:0 20px 60px -10px rgba(0,0,0,.6);
+  display:flex;flex-direction:column;
+}
+
+/* ===== Windows 11 原生标题栏（左菜单 + 右窗口控制）===== */
+.os-titlebar{
+  height:32px;flex:none;display:flex;align-items:center;
+  background:#f0f0f0;-webkit-app-region:drag;
+  border-bottom:1px solid #e0e0e0;
+}
+.os-titlebar .menus{
+  display:flex;align-items:center;height:100%;
+  -webkit-app-region:no-drag;
+}
+.os-titlebar .menu-btn{
+  height:100%;padding:0 12px;background:none;border:none;
+  font-size:12px;color:#333;cursor:pointer;font-family:var(--font-body);
+  display:grid;place-items:center;transition:.1s;
+}
+.os-titlebar .menu-btn:hover{background:rgba(0,0,0,.08)}
+.os-titlebar .grow{flex:1;-webkit-app-region:drag}
+.os-titlebar .win-controls{
+  display:flex;-webkit-app-region:no-drag;height:100%;
+}
+.os-titlebar .win-controls button{
+  width:46px;height:100%;background:none;border:none;
+  display:grid;place-items:center;font-size:10px;color:#333;cursor:pointer;
+}
+.os-titlebar .win-controls button:hover{background:rgba(0,0,0,.08)}
+.os-titlebar .win-controls .close:hover{background:#e81123;color:#fff}
+
+/* ===== 下方直接是三栏 ===== */
+.workspace{flex:1;display:flex;min-height:0}
+
+/* 左栏 */
+.sessions{width:268px;flex:none;background:var(--card);border-right:1px solid var(--rule);padding:16px;display:flex;flex-direction:column;gap:14px}
+.brandrow{display:flex;align-items:center;gap:10px}
+.brandrow .logo{width:28px;height:28px;border-radius:8px;background:var(--seal);color:var(--paper);display:grid;place-items:center;font-size:13px;font-weight:700;flex:none}
+.brandrow .nm{font-family:var(--font-display);font-size:15px;font-weight:600;letter-spacing:.06em}
+.brandrow .sub{font-family:var(--font-mono);font-size:8.5px;letter-spacing:.16em;color:var(--ink-3);text-transform:uppercase}
+.new-chat{display:flex;align-items:center;justify-content:center;height:42px;background:var(--seal);color:var(--paper);border-radius:8px;font-size:13.5px;font-weight:500;border:none;cursor:pointer}
+.search{display:flex;align-items:center;gap:8px;height:36px;padding:0 12px;background:var(--soft);border-radius:8px;color:var(--ink-3);font-size:12px}
+
+/* 中栏 */
+.chat{flex:1;display:flex;flex-direction:column;min-width:0}
+.chat-head{height:58px;flex:none;display:flex;align-items:center;gap:11px;padding:0 22px;border-bottom:1px solid var(--rule)}
+.chat-head .ttl{font-family:var(--font-display);font-size:17px;font-weight:600;letter-spacing:.03em}
+.chat-head .meta{font-family:var(--font-mono);font-size:9.5px;color:var(--ink-3);letter-spacing:.06em;margin-top:3px}
+.chat-head .grow{flex:1}
+.chat-head .chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:999px;background:var(--soft);font-family:var(--font-mono);font-size:10.5px;color:var(--ink-2)}
+.chat-body{flex:1;display:flex;align-items:center;justify-content:center;color:var(--ink-3);font-size:14px}
+.composer{flex:none;padding:14px 26px 20px}
+.cbox{background:var(--soft);border-radius:12px;overflow:hidden}
+.cbox textarea{width:100%;height:58px;resize:none;padding:15px 17px 6px;font-size:14px;line-height:1.7;background:transparent;border:none;outline:none;color:var(--ink);font-family:inherit}
+.ctools{display:flex;align-items:center;gap:7px;padding:8px 11px 11px 13px}
+.ctools .tbtn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:999px;font-size:11px;color:var(--ink-2);border:none;background:var(--soft);font-family:var(--font-body)}
+.ctools .grow{flex:1}
+.ctools .send{width:34px;height:34px;border-radius:11px;background:var(--seal);color:oklch(0.98 0.005 85);display:grid;place-items:center;font-size:15px;border:none;cursor:pointer}
+
+/* 右栏 */
+.output{width:492px;flex:none;background:var(--card);border-left:1px solid var(--rule);display:flex;align-items:center;justify-content:center;color:var(--ink-3);font-size:14px}
+
+/* 标注 */
+.annotation{position:fixed;top:50px;right:30px;width:260px;background:var(--seal);color:var(--paper);border-radius:8px;padding:14px 16px;font-size:11px;line-height:1.8;z-index:99;box-shadow:0 10px 30px -12px rgba(0,0,0,.4)}
+.annotation b{display:block;margin-bottom:6px;font-size:12px}
+.annotation ul{list-style:none}
+.annotation li{padding-left:14px;position:relative}
+.annotation li::before{content:"✓";position:absolute;left:0;color:oklch(0.72 0.15 158)}
+</style>
+</head>
+<body>
+
+<div class="window">
+
+  <!-- 1. Windows 原生标题栏：左菜单 + 右窗口控制（无标题文字） -->
+  <div class="os-titlebar">
+    <div class="menus">
+      <button class="menu-btn">编辑</button>
+      <button class="menu-btn">窗口</button>
+      <button class="menu-btn">帮助</button>
+    </div>
+    <div class="grow"></div>
+    <div class="win-controls">
+      <button title="最小化">—</button>
+      <button title="最大化">☐</button>
+      <button class="close" title="关闭">✕</button>
+    </div>
+  </div>
+
+  <!-- 2. 三栏内容直接开始（没有自建 titlebar） -->
+  <main class="workspace">
+    <aside class="sessions">
+      <div class="brandrow">
+        <div class="logo">案</div>
+        <div><div class="nm">案台</div><div class="sub">bench · desktop</div></div>
+      </div>
+      <button class="new-chat">＋ 新建对话</button>
+      <div class="search">⌕ 搜索会话与文件</div>
+    </aside>
+    <section class="chat">
+      <div class="chat-head">
+        <div><div class="ttl">Q3 销售汇报</div><div class="meta">今天 14:32 · 12 条消息</div></div>
+        <div class="grow"></div>
+        <span class="chip">📁 ~/Documents/Q3汇报</span>
+      </div>
+      <div class="chat-body">对话区域</div>
+      <div class="composer"><div class="cbox">
+        <textarea placeholder="说说你想做什么…"></textarea>
+        <div class="ctools">
+          <button class="tbtn">＋ 附件</button>
+          <button class="tbtn">✨ 技能</button>
+          <div class="grow"></div>
+          <button class="send">↑</button>
+        </div>
+      </div></div>
+    </section>
+    <aside class="output">成果面板</aside>
+  </main>
+
+</div>
+
+<div class="annotation">
+  <b>v3 改造（参考 workbuddy）</b>
+  <ul>
+    <li>标题栏左：编辑/窗口/帮助</li>
+    <li>标题栏右：Windows 原生 — ☐ ✕</li>
+    <li>去掉 macOS 红绿灯</li>
+    <li>无标题文字、无自建 titlebar</li>
+    <li>三栏直接从标题栏下方开始</li>
+  </ul>
+</div>
+
+</body>
+</html>

@@ -1,18 +1,20 @@
 // 输入区 · §6
-import { WORKSPACE } from '../../data/mock';
-
 export default function Composer({
   value,
   onChange,
   onSend,
   autoExec,
   onToggleAuto,
+  workspace,
+  onOpenSettings,
 }: {
   value: string;
   onChange: (v: string) => void;
   onSend: () => void;
   autoExec: boolean;
   onToggleAuto: () => void;
+  workspace: string;
+  onOpenSettings: () => void;
 }) {
   return (
     <div className="composer">
@@ -32,7 +34,7 @@ export default function Composer({
           <div className="ctools">
             <button className="tbtn b">＋ 附件</button>
             <button className="tbtn b">✨ 技能</button>
-            <button className="tbtn">模型 · 均衡 ▾</button>
+            <button className="tbtn" onClick={onOpenSettings} title="模型设置">模型 ▾</button>
             <button className="tbtn" onClick={onToggleAuto}>
               <span className={`switch ${autoExec ? '' : 'off'}`} />自动执行
             </button>
@@ -44,7 +46,7 @@ export default function Composer({
           <span>ENTER 发送</span>
           <span>SHIFT+ENTER 换行</span>
           <div style={{ flex: 1 }} />
-          <span>读写范围 {WORKSPACE}</span>
+          <span>读写范围 {workspace || '未选择'}</span>
         </div>
       </div>
     </div>

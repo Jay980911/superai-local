@@ -1,7 +1,7 @@
 {
   "name": "superai-local",
   "version": "1.0.0",
-  "description": "案台 BENCH — 本地 AI 工作台桌面应用。选一个工作目录，用对话驱动 AI 执行任务、生成文件。",
+  "description": "SuperAI — 本地 AI 工作台桌面应用。选一个工作目录，用对话驱动 AI 执行任务、生成文件。",
   "author": "SuperAI",
   "license": "MIT",
   "homepage": "https://github.com/Jay980911/superai-local",
@@ -26,8 +26,8 @@
     "node": ">=18"
   },
   "build": {
-    "appId": "com.bench.superai-local",
-    "productName": "案台 BENCH",
+    "appId": "com.superai.app",
+    "productName": "SuperAI",
     "directories": {
       "output": "release"
     },
@@ -57,7 +57,7 @@
       "installerHeaderIcon": "bench-app/public/icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "案台 BENCH"
+      "shortcutName": "SuperAI"
     }
   },
   "devDependencies": {

@@ -8,7 +8,7 @@ export const PROJECT = 'q3-report';
 export const previewData: PreviewData = {
   eyebrow: 'Q3 SALES REPORT · 2026',
   title: '第三季度销售汇报',
-  source: '数据来源：销售数据-Q3.xlsx · 由案台生成于今天 14:35',
+  source: '数据来源：销售数据-Q3.xlsx · 由 SuperAI 生成于今天 14:35',
   kpis: [
     { label: '营收', value: '¥2,480万', delta: '▲ 12.4%' },
     { label: '订单', value: '18,204', delta: '▲ 8.1%' },

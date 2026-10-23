@@ -1,6 +1,5 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import './App.css';
-import WindowChrome from '../components/chrome/WindowChrome';
 import SessionSidebar from '../components/sidebar/SessionSidebar';
 import ChatHeader from '../components/chat/ChatHeader';
 import { ChatStream, EmptyState } from '../components/chat/ChatStream';
@@ -8,32 +7,45 @@ import Composer from '../components/chat/Composer';
 import { OutputPanel } from '../components/output/OutputPanel';
 import type { Pane } from '../components/output/OutputPanel';
 import SettingsDialog from '../components/settings/SettingsDialog';
-import type { Session, Message, Step } from '../types';
+import type { Session, Message, Step, FileEntry } from '../types';
+import { messages as mockMessages } from '../data/mock';
 import {
-  getSessions as fetchSessions,
-  getInitialMessages,
   runAgent,
   isElectron,
+  getDefaultWorkspace,
+  onMenu,
+  menuPopup,
+  pickWorkspace,
+  listFiles,
+  readFile,
+  listSessions,
+  getSession,
+  createSession,
+  appendSessionMessage,
+  deleteSession as apiDeleteSession,
   type AgentEvent,
 } from '../data/api';
-
-const allSessions = fetchSessions();
-const initialMessages = getInitialMessages();
 
 let _id = 100;
 const nid = () => `n${_id++}`;
 
 export default function App() {
   const [side, setSide] = useState<'on' | 'off'>('on');
+  const [rightSide, setRightSide] = useState<'on' | 'off'>('on');
   const [pane, setPane] = useState<Pane>('tree');
   const [mode, setMode] = useState<'main' | 'empty'>(isElectron ? 'empty' : 'main');
-  const [activeSession, setActiveSession] = useState<Session>(allSessions[0]);
-  const [msgs, setMsgs] = useState<Message[]>(initialMessages);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [activeSession, setActiveSession] = useState<Session | null>(null);
+  const [msgs, setMsgs] = useState<Message[]>(isElectron ? [] : mockMessages);
   const [draft, setDraft] = useState('');
   const [autoExec, setAutoExec] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [running, setRunning] = useState(false);
+  const [workspace, setWorkspace] = useState('');
+  const [fileTree, setFileTree] = useState<FileEntry[]>([]);
+  const [activeFile, setActiveFile] = useState<{ name: string; path: string } | null>(null);
+  const [fileContent, setFileContent] = useState('');
   const streamRef = useRef<HTMLDivElement>(null);
 
   // 可拖拽栏宽
@@ -74,6 +86,70 @@ export default function App() {
     setTimeout(() => setToast(null), 1800);
   }, []);
 
+  // 加载工作目录的真实文件树
+  const loadFileTree = useCallback(async (ws?: string) => {
+    if (!isElectron) return;
+    const dir = ws || workspace;
+    if (!dir) return;
+    try {
+      const files = await listFiles(dir || workspace, workspace);
+      setFileTree(files);
+    } catch (e) {
+      showToast('读取目录失败');
+    }
+  }, [workspace, showToast]);
+
+  // 打开文件：读内容 → 切到源码面板
+  const onOpenFile = useCallback(async (path: string) => {
+    if (!isElectron) return;
+    try {
+      const content = await readFile(path, workspace);
+      setActiveFile({ name: path.split('/').pop() || path, path });
+      setFileContent(content);
+      setPane('code');
+      setMode('main');
+    } catch (e) {
+      showToast('读取文件失败');
+    }
+  }, [workspace, showToast]);
+
+  // 初始化：读工作目录 + 菜单事件桥接 + 加载会话列表
+  useEffect(() => {
+    if (!isElectron) return;
+    getDefaultWorkspace().then((ws) => {
+      setWorkspace(ws);
+      if (ws) loadFileTree(ws);
+    });
+    listSessions().then(setSessions);
+    onMenu((action) => {
+      if (action === 'settings') setSettingsOpen(true);
+      else if (action === 'about') showToast('SuperAI · 本地 AI 工作台 v1.0.0');
+    });
+  }, []);
+
+  // 刷新会话列表（从存储重读）
+  const refreshSessions = useCallback(async () => {
+    if (!isElectron) return;
+    const list = await listSessions();
+    setSessions(list);
+  }, []);
+
+  // 设置关闭后刷新工作目录显示 + 重载文件树
+  const onSettingsClose = useCallback(() => {
+    setSettingsOpen(false);
+    // 工作目录随会话，不随设置；无需重载
+  }, []);
+
+  // 选工作目录（右栏空态 / 标题栏路径点击）
+  const onPickWorkspace = useCallback(async () => {
+    if (!isElectron) return;
+    const dir = await pickWorkspace(activeSession?.id);
+    if (dir) {
+      setWorkspace(dir);
+      loadFileTree(dir);
+    }
+  }, [loadFileTree, activeSession]);
+
   const openSide = () => setSide('on');
 
   // §6.3 动作路由
@@ -91,26 +167,50 @@ export default function App() {
     [showToast],
   );
 
-  const openCode = useCallback(() => {
-    setPane('code');
-    setMode('main');
-  }, []);
-
-  const pickSession = useCallback((s: Session) => {
+  const pickSession = useCallback(async (s: Session) => {
     setActiveSession(s);
-    if (mode === 'empty') {
-      setMode('main');
-      setPane('tree');
+    setPane('tree');
+    setMode('main');
+    // 加载该会话的消息历史 + 工作目录
+    if (isElectron) {
+      const full = await getSession(s.id);
+      if (full) {
+        setMsgs(full.messages || []);
+        if (full.workspace) {
+          setWorkspace(full.workspace);
+          loadFileTree(full.workspace);
+        }
+      } else {
+        setMsgs([]);
+      }
     }
-  }, [mode]);
+  }, [loadFileTree]);
 
-  const newChat = useCallback(() => {
+  const newChat = useCallback(async () => {
+    let sid = '';
+    if (isElectron && workspace) {
+      sid = await createSession(workspace);
+    }
+    const s: Session = { id: sid || 'temp-' + Date.now(), title: '新对话', summary: '0 条消息', time: '刚刚', group: '今天' };
+    setActiveSession(s);
     setMode('empty');
     setPane('empty');
     setSide('on');
     setDraft('');
     setMsgs([]);
-  }, []);
+    refreshSessions();
+  }, [workspace, refreshSessions]);
+
+  const onDeleteSession = useCallback(async (id: string) => {
+    if (!isElectron) return;
+    await apiDeleteSession(id);
+    if (activeSession?.id === id) {
+      setActiveSession(null);
+      setMode('empty');
+      setMsgs([]);
+    }
+    refreshSessions();
+  }, [activeSession, refreshSessions]);
 
   const pickSuggestion = useCallback((text: string) => {
     setDraft(text);
@@ -142,10 +242,24 @@ export default function App() {
     setMode('main');
     setRunning(true);
 
+    // 确保有活动会话（空态发送时自动创建）
+    let sid = activeSession?.id || '';
+    if (isElectron && !sid && workspace) {
+      sid = await createSession(workspace);
+      setActiveSession({ id: sid, title: '新对话', summary: '0 条消息', time: '刚刚', group: '今天' });
+      refreshSessions();
+    }
+
     // 添加用户消息 + 占位 agent 消息
     const userMsg: Message = { id: nid(), role: 'user', time: '刚刚', text: txt };
     const agentMsg: Message = { id: nid(), role: 'agent', time: '处理中', text: '', steps: [] };
     setMsgs((prev) => [...prev, userMsg, agentMsg]);
+
+    // 存盘：用户消息
+    if (sid) appendSessionMessage(sid, userMsg);
+
+    // 本地副本跟踪 agent 最终状态（流式更新 state，结束时存盘）
+    let agentFinal: Extract<Message, { role: 'agent' }> = agentMsg as Extract<Message, { role: 'agent' }>;
 
     // 滚动到底
     requestAnimationFrame(() => {
@@ -162,40 +276,47 @@ export default function App() {
 
     const onEvent = (e: AgentEvent) => {
       if (e.type === 'text') {
+        agentFinal = { ...agentFinal, text: (agentFinal.text || '') + e.delta };
         updateLastAgent((m) => ({ ...m, text: (m.text || '') + e.delta }));
       } else if (e.type === 'step') {
-        updateLastAgent((m) => {
-          const steps = [...(m.steps || [])];
-          const existing = steps.find((s) => s.label === e.label);
-          if (existing) {
-            existing.status = e.status;
-            existing.duration = e.duration;
-          } else {
-            steps.push({ label: e.label, status: e.status, duration: e.duration } as Step);
-          }
-          return { ...m, steps };
-        });
+        const steps = [...(agentFinal.steps || [])];
+        const existing = steps.find((s) => s.label === e.label);
+        if (existing) {
+          existing.status = e.status;
+          existing.duration = e.duration;
+        } else {
+          steps.push({ label: e.label, status: e.status, duration: e.duration } as Step);
+        }
+        agentFinal = { ...agentFinal, steps };
+        updateLastAgent((m) => { /* 同步 */ const ns = [...(m.steps || [])]; const ex = ns.find((s) => s.label === e.label); if (ex) { ex.status = e.status; ex.duration = e.duration; } else ns.push({ label: e.label, status: e.status, duration: e.duration } as Step); return { ...m, steps: ns }; });
       } else if (e.type === 'file') {
         showToast(`已生成: ${e.name}`);
+        // 文件生成后刷新文件树
+        loadFileTree(workspace);
       } else if (e.type === 'done') {
+        agentFinal = { ...agentFinal, time: '刚刚' };
         updateLastAgent((m) => ({ ...m, time: '刚刚' }));
       } else if (e.type === 'error') {
         showToast(e.message);
+        agentFinal = { ...agentFinal, text: (agentFinal.text || '') + `\n\n⚠ ${e.message}`, time: '刚刚' };
         updateLastAgent((m) => ({ ...m, text: (m.text || '') + `\n\n⚠ ${e.message}`, time: '刚刚' }));
       }
-      // 自动滚动
       requestAnimationFrame(() => {
         streamRef.current?.scrollTo({ top: streamRef.current.scrollHeight });
       });
     };
 
-    const result = await runAgent(txt, history, onEvent);
+    const result = await runAgent(txt, history, workspace, onEvent);
     if (result.error) {
       showToast(result.error);
+      agentFinal = { ...agentFinal, text: (agentFinal.text || '') + `\n\n⚠ ${result.error}`, time: '刚刚' };
       updateLastAgent((m) => ({ ...m, text: (m.text || '') + `\n\n⚠ ${result.error}`, time: '刚刚' }));
     }
+    // 存盘：最终 agent 消息
+    if (sid) appendSessionMessage(sid, agentFinal);
+    refreshSessions();
     setRunning(false);
-  }, [draft, running, msgs, showToast, updateLastAgent]);
+  }, [draft, running, activeSession, workspace, msgs, showToast, updateLastAgent, refreshSessions, loadFileTree]);
 
   const chatMeta =
     mode === 'empty'
@@ -205,25 +326,37 @@ export default function App() {
       : `${msgs.length} 条消息${autoExec ? ' · 自动执行已开启' : ''}`;
 
   return (
-    <div className="app" data-side={side} data-screen={mode} style={{ '--left-w': leftW + 'px', '--right-w': rightW + 'px' } as React.CSSProperties}>
-      <WindowChrome onOpenSettings={() => setSettingsOpen(true)} />
+    <div className="app" data-side={side} data-right={rightSide} data-screen={mode} style={{ '--left-w': leftW + 'px', '--right-w': rightW + 'px' } as React.CSSProperties}>
+      <header className="appbar">
+        <button className="menu-btn" onClick={() => menuPopup('编辑')}>编辑</button>
+        <button className="menu-btn" onClick={() => menuPopup('窗口')}>窗口</button>
+        <button className="menu-btn" onClick={() => menuPopup('帮助')}>帮助</button>
+        <div className="appbar-drag" />
+      </header>
 
       <main className="workspace">
         <SessionSidebar
-          activeSessionId={mode === 'empty' ? '' : activeSession.id}
+          activeSessionId={mode === 'empty' || !activeSession ? '' : activeSession.id}
+          sessions={sessions}
           onPickSession={pickSession}
           onNewChat={newChat}
           onCollapse={() => setSide('off')}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onDeleteSession={onDeleteSession}
         />
 
         <div className="resizer left" onMouseDown={startResize('L')} title="拖拽调节宽度" />
 
         <section className="chat">
           <ChatHeader
-            title={mode === 'empty' ? '新对话' : activeSession.title}
+            title={mode === 'empty' || !activeSession ? '新对话' : activeSession.title}
             meta={chatMeta}
             side={side}
             onOpenSide={openSide}
+            workspace={workspace}
+            onPickWorkspace={onPickWorkspace}
+            rightSide={rightSide}
+            onOpenRight={() => setRightSide('on')}
           />
 
           {mode === 'empty' ? (
@@ -240,6 +373,8 @@ export default function App() {
             onSend={send}
             autoExec={autoExec}
             onToggleAuto={() => setAutoExec((v) => !v)}
+            workspace={workspace}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
         </section>
 
@@ -249,12 +384,18 @@ export default function App() {
           pane={pane}
           setPane={setPane}
           hasContent={mode === 'main'}
-          onAction={handleAction}
-          onOpenCode={openCode}
+          workspace={workspace}
+          onPickWorkspace={onPickWorkspace}
+          fileTree={fileTree}
+          activeFile={activeFile}
+          fileContent={fileContent}
+          onOpenFile={onOpenFile}
+          onToast={showToast}
+          onCollapse={() => setRightSide('off')}
         />
       </main>
 
-      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsDialog onClose={onSettingsClose} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );

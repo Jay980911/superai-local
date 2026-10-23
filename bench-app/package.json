@@ -1,9 +1,9 @@
 {
-  "name": "bench-app",
+  "name": "superai-app",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "BENCH 案台 — 桌面 AI 工作台前端（mock 驱动，UI 真值见 design/bench-ui-ux-prototype.html）",
+  "description": "SuperAI — 桌面 AI 工作台前端",
   "license": "MIT",
   "scripts": {
     "dev": "vite",

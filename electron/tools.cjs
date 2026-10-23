@@ -5,6 +5,15 @@ const path = require('path');
 const { exec } = require('child_process');
 const os = require('os');
 
+// 技能读取走 skills.cjs（避免与 agent.cjs 循环依赖：延迟 require）
+function readSkillTool(args) {
+  const skills = require('./skills.cjs');
+  const r = skills.readSkill(args.name);
+  if (!r) return { error: `未找到技能: ${args.name}` };
+  // 只返回正文，frontmatter meta 摘要已在 system prompt 里给过
+  return { name: args.name, body: r.body, meta: r.meta };
+}
+
 /** 工具 schema — 传给 LLM 的 function calling 定义 */
 const TOOL_SCHEMAS = [
   {
@@ -54,6 +63,45 @@ const TOOL_SCHEMAS = [
         type: 'object',
         properties: { command: { type: 'string', description: '要执行的命令' } },
         required: ['command'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'save_memory',
+      description: '保存一条长期记忆。当用户透露个人信息、偏好、项目背景时调用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          content: { type: 'string', description: '记忆内容，一句话' },
+          tags: { type: 'array', items: { type: 'string' }, description: '标签如 profile/work/preference' },
+        },
+        required: ['content'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_memory',
+      description: '搜索已有记忆。当需要回忆用户之前说过的事时调用。',
+      parameters: {
+        type: 'object',
+        properties: { query: { type: 'string', description: '搜索关键词' } },
+        required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'read_skill',
+      description: '读取某个技能的完整指令正文。当用户任务匹配某个已安装技能时调用，按其指令执行。',
+      parameters: {
+        type: 'object',
+        properties: { name: { type: 'string', description: '技能名称（来自技能清单）' } },
+        required: ['name'],
       },
     },
   },
@@ -114,11 +162,14 @@ function runCommand(args, workspace) {
   });
 }
 
-const HANDLERS = { list_files: listFiles, read_file: readFile, write_file: writeFile, run_command: runCommand };
+// read_skill / save_memory / search_memory 不走 HANDLERS（agent.cjs 单独路由）
+const HANDLERS = { list_files: listFiles, read_file: readFile, write_file: writeFile, run_command: runCommand, read_skill: readSkillTool };
 
 async function execute(name, args, workspace) {
   const fn = HANDLERS[name];
   if (!fn) throw new Error(`未知工具: ${name}`);
+  // read_skill 不需要 workspace
+  if (name === 'read_skill') return fn(args || {});
   return await fn(args, workspace);
 }
 
