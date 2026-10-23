@@ -1,0 +1,39 @@
+{
+  "name": "superai-local",
+  "version": "1.0.0",
+  "description": "SuperAI Local — local project bridge & live preview CLI for the SuperAI web agent. Connects the browser to your real local filesystem and runs whitelisted commands.",
+  "author": "SuperAI",
+  "license": "MIT",
+  "homepage": "https://github.com/gitzhoujiahao/superai-local",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gitzhoujiahao/superai-local.git"
+  },
+  "bugs": {
+    "url": "https://github.com/gitzhoujiahao/superai-local/issues"
+  },
+  "bin": {
+    "superai-local": "bin/cli.js"
+  },
+  "main": "bin/cli.js",
+  "scripts": {
+    "start": "node bin/cli.js",
+    "build:win": "pkg bin/cli.js -t node22-win-x64 -o dist/superai-local.exe --public --options max-old-space-size=4096",
+    "installer:win": "iscc installer.iss"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "pkg": {
+    "assets": [
+      "web/**/*"
+    ],
+    "targets": [
+      "node22-win-x64"
+    ],
+    "outputPath": "dist"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.5.0"
+  }
+}

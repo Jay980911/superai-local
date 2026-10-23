@@ -1,0 +1,98 @@
+name: Build, sign & release (Windows)
+
+# Produces a code-signed SuperAI-Local-Setup.exe and publishes a GitHub Release.
+# Signing uses SignPath Foundation (free OSS program). Until your application is
+# approved and the repository secrets are populated, the build still runs and
+# publishes an UNSIGNED exe (see the `sign` job guard) so you can iterate.
+#
+# Required secrets (set after SignPath onboarding — https://signpath.org/oss):
+#   SIGNPATH_API_TOKEN         SignPath API token
+#   SIGNPATH_ORGANIZATION_ID   SignPath organization id
+# Your SignPath project slugs (configure on their dashboard):
+#   project-slug:             superai-local
+#   signing-policy-slug:       release-signing
+#   artifact-configuration-slug: manual   (raw Authenticode, any PE)
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: 'Submit to SignPath for signing'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write    # to create the release
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install build deps
+        run: npm ci || npm install
+
+      - name: Build single-file exe (@yao-pkg/pkg)
+        run: npm run build:win
+
+      - name: Verify build
+        shell: pwsh
+        run: |
+          if (-not (Test-Path dist/superai-local.exe)) { throw "dist/superai-local.exe missing" }
+          (Get-Item dist/superai-local.exe).Length
+
+      - name: Sign superai-local.exe via SignPath
+        if: ${{ github.event_name == 'push' || github.event.inputs.sign == 'true' }}
+        id: signexe
+        uses: signpath/github-action@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: superai-local
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: manual
+          input-artifact-path: dist/superai-local.exe
+          output-artifact-path: dist/superai-local.exe   # overwrite in place
+          wait-for-completion: true
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer (iscc)
+        run: iscc installer.iss
+
+      - name: Sign installer via SignPath
+        if: ${{ github.event_name == 'push' || github.event.inputs.sign == 'true' }}
+        uses: signpath/github-action@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: superai-local
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: manual
+          input-artifact-path: dist/SuperAI-Local-Setup.exe
+          output-artifact-path: dist/SuperAI-Local-Setup.exe
+          wait-for-completion: true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SuperAI-Local-build
+          path: dist/SuperAI-Local-Setup.exe
+
+      - name: Create GitHub Release
+        if: ${{ github.event_name == 'push' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/SuperAI-Local-Setup.exe
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

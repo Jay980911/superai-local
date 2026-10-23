@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>SuperAI Local 工作台</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-state="connecting">
+<header class="topbar">
+  <div class="brand">⚡ SuperAI Local</div>
+  <div class="proj-info" id="proj-info">加载中…</div>
+  <div class="top-right">
+    <span class="dev-state" id="dev-state">dev: 未启动</span>
+    <button id="restart-preview" class="btn-ghost">重启预览</button>
+    <button id="theme-toggle" class="btn-icon" title="切换白天/黑夜">☀️</button>
+  </div>
+</header>
+<main class="layout" id="layout">
+  <!-- 聊天（左，可调宽） -->
+  <section class="col-chat" id="col-chat">
+    <div class="col-head">对话</div>
+    <div id="chat-log" class="chat-log"></div>
+    <div class="chat-input">
+      <textarea id="msg-input" placeholder="说点什么，如：做个落地页 / 做个 React 仪表盘 / 按钮改红" rows="2" spellcheck="false"></textarea>
+      <button id="send-btn" class="btn-send" title="发送">↑</button>
+    </div>
+  </section>
+  <!-- 拖拽分隔条：调整聊天宽度 -->
+  <div class="resizer" id="resizer" title="拖动调整对话宽度"></div>
+  <!-- 文件树 -->
+  <aside class="col-tree">
+    <div class="col-head">文件</div>
+    <div id="file-tree" class="tree"></div>
+  </aside>
+  <!-- 预览/源码切换 -->
+  <section class="col-preview">
+    <div class="col-head tabs">
+      <button class="tab active" data-view="preview" id="tab-preview">预览</button>
+      <button class="tab" data-view="source" id="tab-source">源码</button>
+      <span class="entry-link" id="entry-link" title="点击查看入口文件源码">入口: -</span>
+      <span class="file-path" id="file-path">（选择文件查看源码）</span>
+      <button id="clear-log" class="btn-mini">清空日志</button>
+    </div>
+    <div class="view-wrap">
+      <iframe id="preview" class="preview-frame" sandbox="allow-scripts allow-forms allow-modals allow-popups"></iframe>
+      <pre id="editor" class="editor" hidden></pre>
+    </div>
+    <div class="col-head col-head-log">脚本输出</div>
+    <div id="dev-log" class="dev-log"></div>
+  </section>
+</main>
+<footer class="statusbar"><span id="status">连接中…</span></footer>
+<script src="app.js"></script>
+</body>
+</html>
