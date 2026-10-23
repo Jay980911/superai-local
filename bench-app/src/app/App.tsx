@@ -24,6 +24,39 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const streamRef = useRef<HTMLDivElement>(null);
 
+  // 可拖拽栏宽
+  const [leftW, setLeftW] = useState(268);
+  const [rightW, setRightW] = useState(492);
+  const drag = useRef<{ which: 'L' | 'R'; startX: number; startW: number } | null>(null);
+
+  const startResize = useCallback(
+    (which: 'L' | 'R') => (e: React.MouseEvent) => {
+      e.preventDefault();
+      drag.current = { which, startX: e.clientX, startW: which === 'L' ? leftW : rightW };
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      const onMove = (ev: MouseEvent) => {
+        if (!drag.current) return;
+        const dx = ev.clientX - drag.current.startX;
+        if (drag.current.which === 'L') {
+          setLeftW(Math.max(200, Math.min(440, drag.current.startW + dx)));
+        } else {
+          setRightW(Math.max(340, Math.min(720, drag.current.startW - dx)));
+        }
+      };
+      const onUp = () => {
+        drag.current = null;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    },
+    [leftW, rightW],
+  );
+
   const showToast = useCallback((t: string) => {
     setToast(t);
     setTimeout(() => setToast(null), 1800);
@@ -99,7 +132,7 @@ export default function App() {
       : '今天 14:32 · 12 条消息 · 自动执行已开启';
 
   return (
-    <div className="app" data-side={side} data-screen={mode}>
+    <div className="app" data-side={side} data-screen={mode} style={{ '--left-w': leftW + 'px', '--right-w': rightW + 'px' } as React.CSSProperties}>
       <WindowChrome />
 
       <main className="workspace">
@@ -109,6 +142,8 @@ export default function App() {
           onNewChat={newChat}
           onCollapse={() => setSide('off')}
         />
+
+        <div className="resizer left" onMouseDown={startResize('L')} title="拖拽调节宽度" />
 
         <section className="chat">
           <ChatHeader
@@ -134,6 +169,8 @@ export default function App() {
             onToggleAuto={() => setAutoExec((v) => !v)}
           />
         </section>
+
+        <div className="resizer right" onMouseDown={startResize('R')} title="拖拽调节宽度" />
 
         <OutputPanel
           pane={pane}
