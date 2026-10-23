@@ -25,8 +25,8 @@
 
   /* ---- 字体 ---- */
   --font-display: 'Noto Serif SC', 'Songti SC', 'Noto Serif CJK SC', serif; /* 标题 */
-  --font-body: 'Space Grotesk', 'Noto Sans SC', 'PingFang SC', sans-serif;  /* 正文/界面 */
-  --font-mono: 'JetBrains Mono', 'SFMono-Regular', ui-monospace, monospace; /* 路径/数字/标签 */
+  --font-body: 'Space Grotesk', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;  /* 正文/界面 · 与原型 --font-ui 对齐 */
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', 'Noto Sans Mono CJK SC', ui-monospace, monospace; /* 路径/数字/标签 */
 
   /* ---- 字号 · 行高 ---- */
   --fs-display: 22px;  --lh-display: 1.4;
