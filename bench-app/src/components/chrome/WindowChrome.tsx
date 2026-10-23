@@ -1,7 +1,7 @@
 // 标题栏 42px · §6 窗口外壳
-import { WORKSPACE } from '../../data/mock';
+import { isElectron } from '../../data/api';
 
-export default function WindowChrome() {
+export default function WindowChrome({ onOpenSettings }: { onOpenSettings: () => void }) {
   return (
     <header className="titlebar">
       <div className="lights">
@@ -12,12 +12,11 @@ export default function WindowChrome() {
         <span className="up" style={{ letterSpacing: '0.18em' }}>bench</span>
       </div>
       <div className="tb-mid">
-        <span className="chip dir">📁 {WORKSPACE}</span>
-        <span className="chip seal">已授权 · 仅此目录</span>
+        {isElectron && <span className="chip seal">桌面版</span>}
       </div>
       <div className="tb-right">
         <span className="chip">模型 · 均衡 ▾</span>
-        <button className="icon-btn" title="设置">⚙</button>
+        <button className="icon-btn" title="设置" onClick={onOpenSettings}>⚙</button>
         <button className="icon-btn" title="帮助">?</button>
       </div>
     </header>

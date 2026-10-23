@@ -1,7 +1,7 @@
 {
   "name": "superai-local",
   "version": "1.0.0",
-  "description": "SuperAI Local — local project bridge & live preview CLI for the SuperAI web agent. Connects the browser to your real local filesystem and runs whitelisted commands.",
+  "description": "案台 BENCH — 本地 AI 工作台桌面应用。选一个工作目录，用对话驱动 AI 执行任务、生成文件。",
   "author": "SuperAI",
   "license": "MIT",
   "homepage": "https://github.com/Jay980911/superai-local",
@@ -12,25 +12,58 @@
   "bugs": {
     "url": "https://github.com/Jay980911/superai-local/issues"
   },
-  "bin": {
-    "superai-local": "bin/cli.js"
-  },
-  "main": "bin/cli.js",
+  "main": "electron/main.cjs",
   "scripts": {
-    "start": "node bin/cli.js",
-    "build:win": "pkg bin/cli.js -t node22-win-x64 -o dist/superai-local.exe --public --options max-old-space-size=4096",
-    "installer:win": "iscc installer.iss"
+    "dev:web": "cd bench-app && npm run dev",
+    "dev:electron": "cross-env BENCH_DEV=1 electron electron/main.cjs",
+    "dev": "concurrently \"npm:dev:web\" \"npm:dev:electron\"",
+    "build:web": "cd bench-app && npm run build",
+    "build:win": "npm run build:web && electron-builder --win --x64",
+    "build:dir": "npm run build:web && electron-builder --dir --win --x64",
+    "start": "electron electron/main.cjs"
   },
   "engines": {
     "node": ">=18"
   },
-  "pkg": {
-    "targets": [
-      "node22-win-x64"
+  "build": {
+    "appId": "com.bench.superai-local",
+    "productName": "案台 BENCH",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "bench-app/dist/**/*",
+      "!bench-app/src",
+      "!bench-app/node_modules",
+      "!bench-app/.git"
     ],
-    "outputPath": "dist"
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "bench-app/public/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "bench-app/public/icon.ico",
+      "uninstallerIcon": "bench-app/public/icon.ico",
+      "installerHeaderIcon": "bench-app/public/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "案台 BENCH"
+    }
   },
   "devDependencies": {
-    "@yao-pkg/pkg": "^6.5.0"
+    "@yao-pkg/pkg": "^6.5.0",
+    "concurrently": "^9.0.0",
+    "cross-env": "^7.0.3",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
   }
 }

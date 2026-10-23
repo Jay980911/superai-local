@@ -1,6 +1,9 @@
 // 对话流 · §6 消息/步骤卡/文件卡/空态
 import type { Message, Action } from '../../types';
-import { genFiles, suggestions } from '../../data/mock';
+import { genFiles, suggestions as mockSuggestions } from '../../data/mock';
+import { isElectron, getSuggestions } from '../../data/api';
+
+const suggestions = isElectron ? getSuggestions() : mockSuggestions;
 import { Check, Clock, FileTypeIcon } from '../icons/Icon';
 
 export function UserMessage({ msg }: { msg: Extract<Message, { role: 'user' }> }) {

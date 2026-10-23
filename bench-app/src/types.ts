@@ -1,6 +1,6 @@
 // 类型定义 · 对应规格 §7
 export type Attachment = { name: string; size: string; kind: 'xls' | 'pdf' | 'img' | 'other' };
-export type StepStatus = 'done' | 'running' | 'pending';
+export type StepStatus = 'done' | 'running' | 'pending' | 'error';
 export type Step = { label: string; status: StepStatus; duration?: string };
 export type GenFileKind = 'html' | 'md' | 'json' | 'xls';
 export type GenFile = {

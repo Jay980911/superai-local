@@ -7,8 +7,18 @@ import { ChatStream, EmptyState } from '../components/chat/ChatStream';
 import Composer from '../components/chat/Composer';
 import { OutputPanel } from '../components/output/OutputPanel';
 import type { Pane } from '../components/output/OutputPanel';
-import type { Session, Message } from '../types';
-import { messages as initialMessages, sessions as allSessions } from '../data/mock';
+import SettingsDialog from '../components/settings/SettingsDialog';
+import type { Session, Message, Step } from '../types';
+import {
+  getSessions as fetchSessions,
+  getInitialMessages,
+  runAgent,
+  isElectron,
+  type AgentEvent,
+} from '../data/api';
+
+const allSessions = fetchSessions();
+const initialMessages = getInitialMessages();
 
 let _id = 100;
 const nid = () => `n${_id++}`;
@@ -16,12 +26,14 @@ const nid = () => `n${_id++}`;
 export default function App() {
   const [side, setSide] = useState<'on' | 'off'>('on');
   const [pane, setPane] = useState<Pane>('tree');
-  const [mode, setMode] = useState<'main' | 'empty'>('main');
+  const [mode, setMode] = useState<'main' | 'empty'>(isElectron ? 'empty' : 'main');
   const [activeSession, setActiveSession] = useState<Session>(allSessions[0]);
   const [msgs, setMsgs] = useState<Message[]>(initialMessages);
   const [draft, setDraft] = useState('');
   const [autoExec, setAutoExec] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [running, setRunning] = useState(false);
   const streamRef = useRef<HTMLDivElement>(null);
 
   // 可拖拽栏宽
@@ -97,43 +109,104 @@ export default function App() {
     setPane('empty');
     setSide('on');
     setDraft('');
+    setMsgs([]);
   }, []);
 
   const pickSuggestion = useCallback((text: string) => {
     setDraft(text);
     setMode('main');
     setPane('tree');
-    // 聚焦输入框：靠浏览器原生 focus 钩子
     requestAnimationFrame(() => {
       document.querySelector<HTMLTextAreaElement>('.cbox textarea')?.focus();
     });
   }, []);
 
-  const send = useCallback(() => {
-    const txt = draft.trim() || '把这份汇报页导出成 PDF，顺便生成一页给客户看的摘要';
+  // 更新最后一条 agent 消息
+  const updateLastAgent = useCallback((fn: (m: Extract<Message, { role: 'agent' }>) => Extract<Message, { role: 'agent' }>) => {
+    setMsgs((prev) => {
+      const idx = [...prev].reverse().findIndex((m) => m.role === 'agent');
+      if (idx === -1) return prev;
+      const realIdx = prev.length - 1 - idx;
+      const target = prev[realIdx];
+      if (target.role !== 'agent') return prev;
+      const next = [...prev];
+      next[realIdx] = fn(target);
+      return next;
+    });
+  }, []);
+
+  const send = useCallback(async () => {
+    const txt = draft.trim();
+    if (!txt || running) return;
     setDraft('');
     setMode('main');
-    const user: Message = { id: nid(), role: 'user', time: '刚刚', text: txt };
-    const bot: Message = {
-      id: nid(),
-      role: 'agent',
-      time: '处理中',
-      text: '收到，正在拆解任务…（原型演示到此）',
-    };
-    setMsgs((prev) => [...prev, user, bot]);
+    setRunning(true);
+
+    // 添加用户消息 + 占位 agent 消息
+    const userMsg: Message = { id: nid(), role: 'user', time: '刚刚', text: txt };
+    const agentMsg: Message = { id: nid(), role: 'agent', time: '处理中', text: '', steps: [] };
+    setMsgs((prev) => [...prev, userMsg, agentMsg]);
+
+    // 滚动到底
     requestAnimationFrame(() => {
       streamRef.current?.scrollTo({ top: streamRef.current.scrollHeight });
     });
-  }, [draft]);
+
+    // 构建历史（只取 role+content）
+    const history = msgs
+      .filter((m) => m.role === 'user' || m.role === 'agent')
+      .map((m) => ({
+        role: m.role === 'agent' ? 'assistant' : 'user',
+        content: m.role === 'user' ? m.text : (m.text || ''),
+      }));
+
+    const onEvent = (e: AgentEvent) => {
+      if (e.type === 'text') {
+        updateLastAgent((m) => ({ ...m, text: (m.text || '') + e.delta }));
+      } else if (e.type === 'step') {
+        updateLastAgent((m) => {
+          const steps = [...(m.steps || [])];
+          const existing = steps.find((s) => s.label === e.label);
+          if (existing) {
+            existing.status = e.status;
+            existing.duration = e.duration;
+          } else {
+            steps.push({ label: e.label, status: e.status, duration: e.duration } as Step);
+          }
+          return { ...m, steps };
+        });
+      } else if (e.type === 'file') {
+        showToast(`已生成: ${e.name}`);
+      } else if (e.type === 'done') {
+        updateLastAgent((m) => ({ ...m, time: '刚刚' }));
+      } else if (e.type === 'error') {
+        showToast(e.message);
+        updateLastAgent((m) => ({ ...m, text: (m.text || '') + `\n\n⚠ ${e.message}`, time: '刚刚' }));
+      }
+      // 自动滚动
+      requestAnimationFrame(() => {
+        streamRef.current?.scrollTo({ top: streamRef.current.scrollHeight });
+      });
+    };
+
+    const result = await runAgent(txt, history, onEvent);
+    if (result.error) {
+      showToast(result.error);
+      updateLastAgent((m) => ({ ...m, text: (m.text || '') + `\n\n⚠ ${result.error}`, time: '刚刚' }));
+    }
+    setRunning(false);
+  }, [draft, running, msgs, showToast, updateLastAgent]);
 
   const chatMeta =
     mode === 'empty'
       ? '开始一段新对话'
-      : '今天 14:32 · 12 条消息 · 自动执行已开启';
+      : running
+      ? '正在处理…'
+      : `${msgs.length} 条消息${autoExec ? ' · 自动执行已开启' : ''}`;
 
   return (
     <div className="app" data-side={side} data-screen={mode} style={{ '--left-w': leftW + 'px', '--right-w': rightW + 'px' } as React.CSSProperties}>
-      <WindowChrome />
+      <WindowChrome onOpenSettings={() => setSettingsOpen(true)} />
 
       <main className="workspace">
         <SessionSidebar
@@ -181,6 +254,7 @@ export default function App() {
         />
       </main>
 
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );
