@@ -1,6 +1,6 @@
 # SuperAI Local
 
-Local project bridge & live preview CLI for the [SuperAI](https://github.com/gitzhoujiahao/superai-local) web agent. The hosted SuperAI agent runs in a container and cannot reach your machine; this CLI runs on your computer, exposes a local HTTP server on `localhost:7000`, and lets the browser front-end proxy file and command operations to your real local project through the hosted `/api/local/tool` channel.
+Local project bridge & live preview CLI for the [SuperAI](https://github.com/Jay980911/superai-local) web agent. The hosted SuperAI agent runs in a container and cannot reach your machine; this CLI runs on your computer, exposes a local HTTP server on `localhost:7000`, and lets the browser front-end proxy file and command operations to your real local project through the hosted `/api/local/tool` channel.
 
 ## What it does
 

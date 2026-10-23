@@ -8,7 +8,7 @@
 #define MyAppVersion   "1.0.0"
 #define MyAppPublisher "SuperAI"
 #define MyAppExeName   "superai-local.exe"
-#define MyAppURL       "https://github.com/gitzhoujiahao/superai-local"
+#define MyAppURL       "https://github.com/Jay980911/superai-local"
 
 [Setup]
 ; NOTE: AppId must stay stable across versions for upgrades to work.

@@ -4,13 +4,13 @@
   "description": "SuperAI Local — local project bridge & live preview CLI for the SuperAI web agent. Connects the browser to your real local filesystem and runs whitelisted commands.",
   "author": "SuperAI",
   "license": "MIT",
-  "homepage": "https://github.com/gitzhoujiahao/superai-local",
+  "homepage": "https://github.com/Jay980911/superai-local",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gitzhoujiahao/superai-local.git"
+    "url": "git+https://github.com/Jay980911/superai-local.git"
   },
   "bugs": {
-    "url": "https://github.com/gitzhoujiahao/superai-local/issues"
+    "url": "https://github.com/Jay980911/superai-local/issues"
   },
   "bin": {
     "superai-local": "bin/cli.js"
