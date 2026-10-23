@@ -25,9 +25,6 @@
     "node": ">=18"
   },
   "pkg": {
-    "assets": [
-      "web/**/*"
-    ],
     "targets": [
       "node22-win-x64"
     ],
