@@ -1,0 +1,13 @@
+# Normalize line endings. Windows-only scripts stay CRLF; everything else LF.
+* text=auto eol=lf
+
+*.vbs  text eol=crlf
+*.ps1  text eol=crlf
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.iss  text eol=crlf
+
+# Binary assets — never normalize.
+*.ico  binary
+*.png  binary
+*.zip  binary
