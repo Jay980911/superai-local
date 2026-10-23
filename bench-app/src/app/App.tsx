@@ -1,139 +1,150 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import './App.css';
+import WindowChrome from '../components/chrome/WindowChrome';
+import SessionSidebar from '../components/sidebar/SessionSidebar';
+import ChatHeader from '../components/chat/ChatHeader';
+import { ChatStream, EmptyState } from '../components/chat/ChatStream';
+import Composer from '../components/chat/Composer';
+import { OutputPanel } from '../components/output/OutputPanel';
+import type { Pane } from '../components/output/OutputPanel';
+import type { Session, Message } from '../types';
+import { messages as initialMessages, sessions as allSessions } from '../data/mock';
 
-// P0 骨架：标题栏 + 三栏 shell + 分段控件。
-// 内容/交互后续阶段按 §6 组件清单填充；mock 数据按 §7。
-// 视觉真值：design/bench-ui-ux-prototype.html（风格A）。
-
-type Pane = 'tree' | 'code' | 'preview';
+let _id = 100;
+const nid = () => `n${_id++}`;
 
 export default function App() {
   const [side, setSide] = useState<'on' | 'off'>('on');
   const [pane, setPane] = useState<Pane>('tree');
+  const [mode, setMode] = useState<'main' | 'empty'>('main');
+  const [activeSession, setActiveSession] = useState<Session>(allSessions[0]);
+  const [msgs, setMsgs] = useState<Message[]>(initialMessages);
+  const [draft, setDraft] = useState('');
+  const [autoExec, setAutoExec] = useState(true);
+  const [toast, setToast] = useState<string | null>(null);
+  const streamRef = useRef<HTMLDivElement>(null);
+
+  const showToast = useCallback((t: string) => {
+    setToast(t);
+    setTimeout(() => setToast(null), 1800);
+  }, []);
+
+  const openSide = () => setSide('on');
+
+  // §6.3 动作路由
+  const handleAction = useCallback(
+    (act: string) => {
+      if (act.startsWith('open:')) {
+        setPane(act.slice(5) as Pane);
+        setMode('main');
+      } else if (act === 'undo') {
+        showToast('已撤销这次修改');
+      } else if (act.startsWith('toast:')) {
+        showToast(act.slice(6));
+      }
+    },
+    [showToast],
+  );
+
+  const openCode = useCallback(() => {
+    setPane('code');
+    setMode('main');
+  }, []);
+
+  const pickSession = useCallback((s: Session) => {
+    setActiveSession(s);
+    if (mode === 'empty') {
+      setMode('main');
+      setPane('tree');
+    }
+  }, [mode]);
+
+  const newChat = useCallback(() => {
+    setMode('empty');
+    setPane('empty');
+    setSide('on');
+    setDraft('');
+  }, []);
+
+  const pickSuggestion = useCallback((text: string) => {
+    setDraft(text);
+    setMode('main');
+    setPane('tree');
+    // 聚焦输入框：靠浏览器原生 focus 钩子
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLTextAreaElement>('.cbox textarea')?.focus();
+    });
+  }, []);
+
+  const send = useCallback(() => {
+    const txt = draft.trim() || '把这份汇报页导出成 PDF，顺便生成一页给客户看的摘要';
+    setDraft('');
+    setMode('main');
+    const user: Message = { id: nid(), role: 'user', time: '刚刚', text: txt };
+    const bot: Message = {
+      id: nid(),
+      role: 'agent',
+      time: '处理中',
+      text: '收到，正在拆解任务…（原型演示到此）',
+    };
+    setMsgs((prev) => [...prev, user, bot]);
+    requestAnimationFrame(() => {
+      streamRef.current?.scrollTo({ top: streamRef.current.scrollHeight });
+    });
+  }, [draft]);
+
+  const chatMeta =
+    mode === 'empty'
+      ? '开始一段新对话'
+      : '今天 14:32 · 12 条消息 · 自动执行已开启';
 
   return (
-    <div className="app" data-side={side} data-screen="main">
-      {/* 标题栏 42px */}
-      <header className="titlebar">
-        <div className="lights">
-          <i /> <i /> <i />
-        </div>
-        <div className="tb-title">
-          <b>案台</b>
-          <span className="up" style={{ letterSpacing: '0.18em' }}>bench</span>
-        </div>
-        <div className="tb-mid">
-          <span className="chip dir">📁 ~/Documents/Q3汇报</span>
-          <span className="chip seal">已授权 · 仅此目录</span>
-        </div>
-        <div className="tb-right">
-          <span className="chip">模型 · 均衡 ▾</span>
-          <button className="icon-btn" title="设置">⚙</button>
-          <button className="icon-btn" title="帮助">?</button>
-        </div>
-      </header>
+    <div className="app" data-side={side} data-screen={mode}>
+      <WindowChrome />
 
       <main className="workspace">
-        {/* 左：会话栏（P0 占位，P1 填充内容） */}
-        <aside className="sessions">
-          <div className="brandrow">
-            <div className="logo">案</div>
-            <div>
-              <div className="nm">案台</div>
-              <div className="sub">bench · desktop</div>
-            </div>
-            <div className="grow" />
-            <button
-              className="icon-btn"
-              title="收起侧栏 «"
-              onClick={() => setSide('off')}
-            >
-              «
-            </button>
-          </div>
-          <button className="new-chat">＋ 新建对话</button>
-          <div className="search">
-            <span>⌕</span>搜索会话与文件<span className="k">⌘K</span>
-          </div>
-          <div className="side-scroll" />
-          <div className="userbar">
-            <div className="avatar">周</div>
-            <div>
-              <div className="u1">周佳豪</div>
-              <div className="u2">个人版 · 已登录</div>
-            </div>
-            <div className="grow" />
-            <span className="upgrade">升级</span>
-            <button className="icon-btn">⚙</button>
-          </div>
-        </aside>
+        <SessionSidebar
+          activeSessionId={mode === 'empty' ? '' : activeSession.id}
+          onPickSession={pickSession}
+          onNewChat={newChat}
+          onCollapse={() => setSide('off')}
+        />
 
-        {/* 中：主会话（P0 占位） */}
         <section className="chat">
-          <div className="chat-head">
-            <button
-              className="icon-btn side-open"
-              title="展开侧栏"
-              onClick={() => setSide('on')}
-            >
-              ☰
-            </button>
-            <div>
-              <div className="ttl">Q3 销售汇报</div>
-              <div className="meta">今天 14:32 · 12 条消息 · 自动执行已开启</div>
+          <ChatHeader
+            title={mode === 'empty' ? '新对话' : activeSession.title}
+            meta={chatMeta}
+            side={side}
+            onOpenSide={openSide}
+          />
+
+          {mode === 'empty' ? (
+            <EmptyState onPick={pickSuggestion} />
+          ) : (
+            <div className="stream" ref={streamRef}>
+              <ChatStream messages={msgs} onAction={handleAction} />
             </div>
-            <div className="grow" />
-            <span className="chip dir">📁 ~/Documents/Q3汇报</span>
-            <button className="icon-btn">↗</button>
-            <button className="icon-btn">⋯</button>
-          </div>
-          <div className="stream">
-            <div className="wrap" />
-          </div>
-          <div className="composer">
-            <div className="inner">
-              <div className="cbox">
-                <textarea placeholder="告诉案台要达成的结果…" />
-                <div className="ctools">
-                  <span className="tbtn b">＋ 附件</span>
-                  <span className="tbtn b">✨ 技能</span>
-                  <span className="tbtn">模型 · 均衡 ▾</span>
-                  <div className="grow" />
-                  <button className="send" title="发送">↑</button>
-                </div>
-              </div>
-              <div className="cfoot">
-                <span>ENTER 发送</span>
-                <span>SHIFT+ENTER 换行</span>
-                <span style={{ marginLeft: 'auto' }}>读写范围 ~/Documents/Q3汇报</span>
-              </div>
-            </div>
-          </div>
+          )}
+
+          <Composer
+            value={draft}
+            onChange={setDraft}
+            onSend={send}
+            autoExec={autoExec}
+            onToggleAuto={() => setAutoExec((v) => !v)}
+          />
         </section>
 
-        {/* 右：成果面板 492px（P0 shell） */}
-        <aside className="output">
-          <div className="out-head">
-            <div className="t">成果</div>
-            <div className="grow" />
-            <div className="segs">
-              <button className={pane === 'tree' ? 'on' : ''} onClick={() => setPane('tree')}>目录树</button>
-              <button className={pane === 'code' ? 'on' : ''} onClick={() => setPane('code')}>源码</button>
-              <button className={pane === 'preview' ? 'on' : ''} onClick={() => setPane('preview')}>预览</button>
-            </div>
-          </div>
-          <div className="out-body">
-            <div className={`opane ${pane === 'tree' ? 'on' : ''}`} />
-            <div className={`opane ${pane === 'code' ? 'on' : ''}`} />
-            <div className={`opane ${pane === 'preview' ? 'on' : ''}`} />
-          </div>
-          <div className="out-foot">
-            <div className="grow" />
-            <button className="icon-btn">＋</button>
-            <button className="icon-btn">⋯</button>
-          </div>
-        </aside>
+        <OutputPanel
+          pane={pane}
+          setPane={setPane}
+          hasContent={mode === 'main'}
+          onAction={handleAction}
+          onOpenCode={openCode}
+        />
       </main>
+
+      {toast && <div className="toast">{toast}</div>}
     </div>
   );
 }
