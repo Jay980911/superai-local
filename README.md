@@ -1,52 +1,22 @@
-# SuperAI Local
+# BENCH · 案台 — 桌面 AI 工作台
 
-Local project bridge & live preview CLI for the [SuperAI](https://github.com/Jay980911/superai-local) web agent. The hosted SuperAI agent runs in a container and cannot reach your machine; this CLI runs on your computer, exposes a local HTTP server on `localhost:7000`, and lets the browser front-end proxy file and command operations to your real local project through the hosted `/api/local/tool` channel.
+桌面端 AI 工作台，以 [deepseek-harness](https://github.com/gitzhoujiahao/deepseek-harness) 引擎为核心。选一个工作目录，用对话驱动 AI 执行任务、生成文件/项目，右侧实时查看成果（目录树 / 源码 / 预览）。
 
-## What it does
+## 仓库结构
 
-- Serves a local workbench UI (file tree + live preview) at `http://localhost:7000`.
-- Exposes `GET /api/ping`, `POST /api/handshake`, `GET /api/tree`, `GET /api/file`, `POST /api/tool` (the bridge the agent calls).
-- `POST /api/tool` dispatches four whitelisted operations the agent uses:
-  - `list_files` — list a project directory (optional subdirectory)
-  - `read_file` — read a UTF-8 file
-  - `write_file` — write a UTF-8 file (size-capped, path-confined)
-  - `run_command` — run a whitelisted command (npm/npx/node/yarn/pnpm/git + read-only diagnostics)
-- Registers the `superai-local://` URL protocol so the web page can launch it with one click.
+- `bench-app/` — 桌面端前端（Vite + React + TS，mock 驱动，UI 真值见 `design/`）
+- `design/` — 视觉真值与实现规格（`bench-implementation-brief.md` / `bench-ui-ux-prototype.html` / `bench-design-tokens.css`）
+- `bin/` `src/` `web/` — 早期本地桥 CLI（保留作为 SignPath 签名那条线的 fallback，后续被桌面壳取代）
 
-## Install (end users)
-
-Download `SuperAI-Local-Setup.exe` from the [latest release](../../releases), run it, then click **连接本地电脑** in the SuperAI web page. The installer is code-signed through [SignPath Foundation](https://signpath.org) (free OSS signing), so Windows SmartScreen / Smart App Control accept it.
-
-## Develop
+## 快速开始（前端）
 
 ```bash
-npm install
-npm start                    # runs on http://localhost:7000
+cd bench-app
+npm install && npm run dev   # → http://localhost:5174
 ```
 
-Point it at your SuperAI server with env or CLI flags:
-
-```bash
-SUPERAI_SERVER=https://your-superai.example npm start
-# or
-node bin/cli.js --port 7000 --token <jwt> --server https://your-superai.example /path/to/project
-```
-
-## Build
-
-Windows binaries are produced in CI:
-
-```bash
-npm run build:win           # -> dist/superai-local.exe (Node + CLI bundled via @yao-pkg/pkg)
-npm run installer:win       # -> dist/SuperAI-Local-Setup.exe (Inno Setup, requires Inno Setup installed)
-```
-
-## Security
-
-- All file operations are path-confined to the chosen work directory (`src/security.js`).
-- `run_command` only runs commands whose first token is in a fixed whitelist; npm install auto-uses the China mirror.
-- No file contents or credentials are persisted by the hosted side; this CLI is the only component that touches your disk.
+详见 `bench-app/README.md`。
 
 ## License
 
-MIT. Windows binaries are signed via the [SignPath Foundation](https://signpath.org) free OSS program; the certificate reads "Open Source Developer, SignPath Foundation".
+MIT. Windows 构建签名走 [SignPath Foundation](https://signpath.org) 免费 OSS 项目。

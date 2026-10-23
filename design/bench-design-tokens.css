@@ -1,0 +1,52 @@
+/* ============================================================
+   BENCH · 案台 — Design Tokens v1.0
+   来源：bench-ui-ux-prototype.html（风格 A · 简约高级）
+   用法：@import './bench-design-tokens.css';  变量全局可用
+   ============================================================ */
+:root {
+  /* ---- 色彩 · 静态界面无彩色，彩色只表达状态 ---- */
+  --paper:  oklch(0.976 0.006 95);   /* 纸 · 页面底 */
+  --card:   oklch(0.993 0.002 95);   /* 卡 · 内容底 */
+  --soft:   oklch(0.951 0.006 95);   /* 浅底 · 悬停/输入 */
+  --ink:    oklch(0.205 0.008 255);  /* 墨 · 主文字/主行动 */
+  --ink-2:  oklch(0.455 0.008 255);  /* 次文 */
+  --ink-3:  oklch(0.575 0.008 255);  /* 弱文 · 辅助/占位 */
+  --rule:   oklch(0.912 0.005 95);   /* 发丝线 · 结构分隔 */
+  --rule-2: oklch(0.866 0.005 95);   /* 发丝线 · 次级 */
+  --blue:   oklch(0.435 0.055 245);  /* 蓝图 · 信息 */
+  --blue-soft: oklch(0.952 0.012 240);
+  --green:  oklch(0.520 0.085 158);  /* 成功 */
+  --amber:  oklch(0.625 0.105 80);   /* 提醒 */
+  --danger: oklch(0.525 0.155 27);   /* 危险 */
+
+  /* ---- 字体 ---- */
+  --font-display: 'Noto Serif SC', 'Songti SC', 'Noto Serif CJK SC', serif; /* 标题 */
+  --font-body: 'Space Grotesk', 'Noto Sans SC', 'PingFang SC', sans-serif;  /* 正文/界面 */
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', ui-monospace, monospace; /* 路径/数字/标签 */
+
+  /* ---- 字号 · 行高 ---- */
+  --fs-display: 22px;  --lh-display: 1.4;
+  --fs-title:   15px;  --lh-title: 1.5;
+  --fs-body:    14.5px;--lh-body: 1.8;
+  --fs-ui:      12.5px;
+  --fs-mono:    11.5px;
+  --fs-label:   9.5px; /* 全大写 · 字距 .16em */
+
+  /* ---- 形状 ---- */
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px; --r-xl: 16px;
+
+  /* ---- 间距 · 4 基准 ---- */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px;
+  --s-6: 24px; --s-8: 32px; --s-12: 48px;
+
+  /* ---- 阴影（克制：只给输入框与浮层） ---- */
+  --sh-1: 0 1px 2px oklch(0.2 0.01 255 / .05);
+  --sh-2: 0 10px 30px -12px oklch(0.2 0.01 255 / .13);
+
+  /* ---- 图标规范 ----
+     24 网格 · stroke-width 2 · linecap butt · linejoin miter
+     容器类图形：白色填充 + 墨色描边；单色灰阶，不用彩色图标
+     ------------------------------------------------------- */
+  --icon-grid: 24;
+  --icon-stroke: 2;
+}

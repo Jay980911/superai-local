@@ -1,0 +1,34 @@
+{
+  "meta": { "name": "bench-design-tokens", "version": "1.0", "style": "A · 简约高级", "source": "bench-ui-ux-prototype.html" },
+  "color": {
+    "paper":     { "value": "oklch(0.976 0.006 95)",  "role": "页面底" },
+    "card":      { "value": "oklch(0.993 0.002 95)",  "role": "内容底" },
+    "soft":      { "value": "oklch(0.951 0.006 95)",  "role": "悬停/输入底" },
+    "ink":       { "value": "oklch(0.205 0.008 255)", "role": "主文字/主行动" },
+    "ink-2":     { "value": "oklch(0.455 0.008 255)", "role": "次要文字" },
+    "ink-3":     { "value": "oklch(0.575 0.008 255)", "role": "辅助文字" },
+    "rule":      { "value": "oklch(0.912 0.005 95)",  "role": "发丝线" },
+    "rule-2":    { "value": "oklch(0.866 0.005 95)",  "role": "次级线" },
+    "blue":      { "value": "oklch(0.435 0.055 245)", "role": "信息" },
+    "green":     { "value": "oklch(0.520 0.085 158)", "role": "成功" },
+    "amber":     { "value": "oklch(0.625 0.105 80)",  "role": "提醒" },
+    "danger":    { "value": "oklch(0.525 0.155 27)",  "role": "危险" }
+  },
+  "typography": {
+    "display": { "family": "Noto Serif SC / Songti SC", "size": 22, "lineHeight": 1.4, "usage": "标题" },
+    "body":    { "family": "Space Grotesk + Noto Sans SC", "size": 14.5, "lineHeight": 1.8, "usage": "正文/界面" },
+    "mono":    { "family": "JetBrains Mono", "size": 11.5, "usage": "路径/文件名/数字" },
+    "label":   { "family": "JetBrains Mono", "size": 9.5, "letterSpacing": "0.16em", "transform": "uppercase", "usage": "小标签" }
+  },
+  "shape": { "radius": { "sm": 6, "md": 8, "lg": 12, "xl": 16 }, "spaceBase": 4,
+             "space": [4, 8, 12, 16, 24, 32, 48] },
+  "icon": { "grid": 24, "strokeWidth": 2, "linecap": "butt", "linejoin": "miter",
+            "fill": "white fill on container shapes", "palette": "monochrome" },
+  "principles": [
+    "对话区零描边：靠留白与字重分层，发丝线只做结构分栏",
+    "一个实心主按钮：其余动作降级为文字链",
+    "色彩只表达状态：常规界面无彩色",
+    "AI 过程可见但不喧哗：步骤/生成文件/修改记录各一张轻量卡，可展开可撤销",
+    "授权范围常驻可见：工作目录与权限不隐藏"
+  ]
+}
