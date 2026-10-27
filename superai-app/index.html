@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SuperAI — 桌面 AI 工作台</title>
+    <!--
+      CSP：零外链依赖（字体已本地化到 src/assets/fonts，见 styles/fonts.css，
+      中文走系统字体栈）——既满足 file:// 打包运行，也消除 Electron 安全警告。
+      style-src 需要 'unsafe-inline'：React 大量使用 style={{}} 行内样式。
+      script-src 无 inline/eval：产物全部是外部 JS；模型输出经 DOMPurify 消毒后
+      注入（见 components/chat/Markdown.tsx），双重保证不可注入可执行脚本。
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: superai-preview:; font-src 'self' data: superai-preview:; connect-src 'self'; frame-src 'self' superai-preview: blob: data:"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

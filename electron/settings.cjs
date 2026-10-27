@@ -1,48 +1,109 @@
 // settings.cjs — 本地设置管理（明文 JSON）
-// 模型：内置预设 + 用户自定义条目；工作目录跟随软件安装目录，每会话独立
+// 模型：不内置任何预设，全部由用户自行添加（任意大模型）。
+// 协议与 dsh（deepseek-harness）llm-pi-ai 对齐：
+//   openai-completions  — OpenAI Chat Completions 兼容（绝大多数服务，含 Ollama 的 /v1）
+//   openai-responses    — OpenAI Responses API
+//   anthropic-messages  — Anthropic Messages API
 const { app } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
 let cache = null;
 
-function settingsPath() {
-  return path.join(app.getPath('userData'), 'settings.json');
+/** 合法的 API 协议取值 */
+const API_TYPES = ['openai-completions', 'openai-responses', 'anthropic-messages'];
+
+/** 旧版 apiType → 新版 api 的迁移映射（ollama 走其 /v1 OpenAI 兼容端点） */
+const LEGACY_API_MAP = { openai: 'openai-completions', ollama: 'openai-completions' };
+
+/** app 状态目录：打包=安装目录/data，开发=项目根/data（远离 C 盘，和 workspace 平级） */
+function appDataDir() {
+  if (app.isPackaged) {
+    return path.join(path.dirname(process.execPath), 'data');
+  }
+  // 开发态：settings.cjs 在 electron/ 下，上一级即项目根
+  return path.resolve(__dirname, '..', 'data');
 }
 
-/** 内置模型预设（用户可在此基础上改 apiKey/model，但不能删除条目本身） */
-const BUILTIN_MODELS = [
-  { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com', apiKey: '', model: 'deepseek-chat', apiType: 'openai', builtin: true },
-  { id: 'openai',   name: 'OpenAI',   baseUrl: 'https://api.openai.com',  apiKey: '', model: 'gpt-4o',         apiType: 'openai', builtin: true },
-  { id: 'ollama',   name: 'Ollama',    baseUrl: 'http://localhost:11434', apiKey: '', model: 'qwen2.5:14b',     apiType: 'ollama', builtin: true },
-];
+function settingsPath() {
+  return path.join(appDataDir(), 'settings.json');
+}
 
+/** 默认配置：不内置模型，用户必须自行添加并选择 */
 function defaults() {
   return {
-    models: BUILTIN_MODELS.map((m) => ({ ...m })),
+    models: [],
     currentModelId: '',   // 空 = 未选择，用户必须选一个
     autoExec: true,
+    scanGlobalSkills: false,  // 默认只扫 superai data/skills；true=同时扫 ~/.agents/skills 等 dsh 默认根（需用户显式同意）
+    workspace: '',        // 全局默认工作目录覆盖（用户在无活动会话时选的目录）；
+                          // 空 = 用安装目录/workspace。每个会话可再单独覆盖。
+    imageModel: null,     // 图像生成模型配置（独立于对话模型，本地明文存，不进 dsh provider patch）
+                          // { baseUrl, apiKey, model }，供 scripts/image-gen.mjs 使用
   };
 }
 
-/** 默认工作目录 = 软件安装目录/workspace（装哪盘在哪盘）；开发态用项目根 */
-function defaultWorkspace() {
+/** 原始默认工作目录 = 软件安装目录/workspace（装哪盘在哪盘）；开发态用项目根。
+ *  不读 settings——ensureDataDirs 在 load() 内部调用，读 settings 会递归 */
+function rawDefaultWorkspace() {
   if (app.isPackaged) {
     return path.join(path.dirname(process.execPath), 'workspace');
   }
-  return path.join(app.getAppPath(), 'workspace');
+  // 开发态：项目根/workspace
+  return path.resolve(__dirname, '..', 'workspace');
 }
 
-/** 确保数据目录存在：sessions / memory / skills（userData 下）+ workspace（安装目录下） */
+/** 默认工作目录 = 用户选过的全局目录（settings.workspace）→ 原始默认目录 */
+function defaultWorkspace() {
+  const override = load().workspace;
+  if (override && typeof override === 'string' && override.trim()) return override;
+  return rawDefaultWorkspace();
+}
+
+/** 确保数据目录存在：appData 下 sessions/memory/skills + workspace（安装目录下） */
 function ensureDataDirs() {
-  const root = app.getPath('userData');
+  const root = appDataDir();
   for (const sub of ['sessions', 'memory', 'skills']) {
     const p = path.join(root, sub);
     if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
   }
-  // 默认工作目录
-  const ws = defaultWorkspace();
+  // 默认工作目录（注意用 raw 版本：load() 调用本函数，不能回头读 settings）
+  const ws = rawDefaultWorkspace();
   if (!fs.existsSync(ws)) fs.mkdirSync(ws, { recursive: true });
+}
+
+/**
+ * 旧格式迁移：
+ *  - apiType('openai'|'ollama') → api('openai-completions' 等)
+ *  - ollama 的 baseUrl 补 /v1（其 OpenAI 兼容端点）
+ *  - 去掉 builtin 标记（不再有内置模型，全部可删）
+ *  - 收敛非法 api 取值；currentModelId 指向失效条目时清空
+ */
+function migrate(s) {
+  if (!Array.isArray(s.models)) { s.models = []; return s; }
+  // workspace 全局默认目录：只接受非空字符串，其他值收敛为空
+  if (typeof s.workspace !== 'string') s.workspace = '';
+  // scanGlobalSkills 布尔收敛（旧 settings 无此字段时默认 false）
+  if (typeof s.scanGlobalSkills !== 'boolean') s.scanGlobalSkills = false;
+  // imageModel：图像生成模型配置（独立于对话模型，本地明文存，不进 dsh provider patch）
+  if (!s.imageModel || typeof s.imageModel !== 'object') s.imageModel = null;
+  s.models = s.models.map((m) => {
+    const next = { ...m };
+    if (next.apiType && !next.api) {
+      next.api = LEGACY_API_MAP[next.apiType] || 'openai-completions';
+      if (next.apiType === 'ollama' && next.baseUrl && !/\/v1\/?$/.test(next.baseUrl)) {
+        next.baseUrl = next.baseUrl.replace(/\/+$/, '') + '/v1';
+      }
+    }
+    delete next.apiType;
+    delete next.builtin;
+    if (!API_TYPES.includes(next.api)) next.api = 'openai-completions';
+    return next;
+  });
+  if (s.currentModelId && !s.models.find((m) => m.id === s.currentModelId)) {
+    s.currentModelId = '';
+  }
+  return s;
 }
 
 function load() {
@@ -51,16 +112,7 @@ function load() {
   try {
     const raw = fs.readFileSync(settingsPath(), 'utf-8');
     const parsed = JSON.parse(raw);
-    cache = { ...defaults(), ...parsed };
-    // 兼容旧格式：把旧的 flat provider/apiKey/baseUrl/model 迁移进 models
-    if (parsed.provider && !cache.models) {
-      cache.models = BUILTIN_MODELS.map((m) => ({ ...m }));
-    }
-    // 确保 models 数组存在且内置条目齐全
-    if (!Array.isArray(cache.models)) cache.models = BUILTIN_MODELS.map((m) => ({ ...m }));
-    for (const b of BUILTIN_MODELS) {
-      if (!cache.models.find((m) => m.id === b.id)) cache.models.push({ ...b });
-    }
+    cache = migrate({ ...defaults(), ...parsed });
   } catch {
     cache = defaults();
   }
@@ -68,7 +120,7 @@ function load() {
 }
 
 function save(patch) {
-  const next = { ...load(), ...patch };
+  const next = migrate({ ...load(), ...patch });
   fs.writeFileSync(settingsPath(), JSON.stringify(next, null, 2), 'utf-8');
   cache = next;
   return next;
@@ -80,21 +132,29 @@ function getCurrentModel() {
   return s.models.find((m) => m.id === s.currentModelId) || null;
 }
 
-/** 添加自定义模型 */
+/** 添加模型（任意大模型，字段齐才能用） */
 function addModel(model) {
   const s = load();
-  const id = 'm-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-  const entry = { ...model, id, builtin: false };
+  const entry = {
+    id: 'm-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+    name: String(model.name || '').trim(),
+    baseUrl: String(model.baseUrl || '').trim().replace(/\/+$/, ''),
+    apiKey: String(model.apiKey || ''),
+    model: String(model.model || '').trim(),
+    api: API_TYPES.includes(model.api) ? model.api : 'openai-completions',
+    kind: model.kind === 'image' ? 'image' : 'chat',
+  };
+  if (!entry.name || !entry.baseUrl || !entry.model) {
+    return { ok: false, error: '名称、API 地址、模型名不能为空' };
+  }
   s.models.push(entry);
   save(s);
   return entry;
 }
 
-/** 删除模型（内置不可删） */
+/** 删除模型（无内置概念，全部可删） */
 function removeModel(id) {
   const s = load();
-  const m = s.models.find((x) => x.id === id);
-  if (m && m.builtin) return { ok: false, error: '内置模型不可删除' };
   s.models = s.models.filter((x) => x.id !== id);
   if (s.currentModelId === id) s.currentModelId = '';
   save(s);
@@ -107,25 +167,28 @@ function setCurrentModel(id) {
   return load();
 }
 
-/** 更新模型（改内置的 apiKey/model，或自定义的全部字段） */
+/** 更新模型字段 */
 function updateModel(id, patch) {
   const s = load();
   const m = s.models.find((x) => x.id === id);
   if (!m) return null;
-  Object.assign(m, patch);
+  const next = { ...patch };
+  delete next.id;
+  delete next.builtin;
+  delete next.apiType;
+  if (next.api && !API_TYPES.includes(next.api)) delete next.api;
+  Object.assign(m, next);
   save(s);
   return m;
 }
 
+/** 旧调用兼容：已无内置预设，返回空 */
 function getPresets() {
-  // 兼容旧调用
-  const out = {};
-  for (const m of BUILTIN_MODELS) out[m.id] = { baseUrl: m.baseUrl, model: m.model };
-  return out;
+  return {};
 }
 
 module.exports = {
-  load, save, defaults, getPresets, ensureDataDirs, defaultWorkspace,
+  load, save, defaults, getPresets, ensureDataDirs, defaultWorkspace, appDataDir,
   getCurrentModel, addModel, removeModel, setCurrentModel, updateModel,
-  BUILTIN_MODELS,
+  API_TYPES,
 };

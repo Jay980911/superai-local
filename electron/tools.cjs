@@ -113,8 +113,21 @@ function resolvePath(p, workspace) {
   return path.join(workspace, p);
 }
 
+/**
+ * 工作目录边界校验：产品承诺「所有操作都限定在你授权的工作目录里」。
+ * 绝对路径必须位于 workspace 内，否则拒绝（相对路径 resolvePath 后自然在内）。
+ */
+function assertInside(p, workspace) {
+  if (!workspace) return;
+  const rel = path.relative(path.resolve(workspace), path.resolve(p));
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error(`路径越界：${p} 不在工作目录 ${workspace} 内`);
+  }
+}
+
 function listFiles(args, workspace) {
   const dir = resolvePath(args.dir, workspace);
+  assertInside(dir, workspace);
   const result = [];
   function walk(d, depth, prefix) {
     if (depth > 3) return;
@@ -140,6 +153,7 @@ function listFiles(args, workspace) {
 
 function readFile(args, workspace) {
   const p = resolvePath(args.path, workspace);
+  assertInside(p, workspace);
   const size = fs.statSync(p).size;
   if (size > 1024 * 1024) throw new Error('文件过大（>1MB），拒绝读取');
   return fs.readFileSync(p, 'utf-8');
@@ -147,6 +161,7 @@ function readFile(args, workspace) {
 
 function writeFile(args, workspace) {
   const p = resolvePath(args.path, workspace);
+  assertInside(p, workspace);
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, args.content, 'utf-8');
   const stat = fs.statSync(p);

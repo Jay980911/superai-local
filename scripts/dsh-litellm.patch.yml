@@ -1,0 +1,15 @@
+# superai-local: dsh 自定义 OpenAI 兼容 provider 补丁
+# 通过 dsh --patch 叠加到 sdk profile 上，把 settings.json 里的模型配置
+# 映射为 dsh 的 provider。API Key 经环境变量注入（apiKeyEnv），不落盘。
+# 注意：patch 条目用 profile 里目标条目的 id 匹配（此处 llm-pi-ai），不是插件包名。
+- id: llm-pi-ai
+  config:
+    providers:
+      superai-litellm:
+        api: 'openai-completions'
+        baseURL: 'https://www.litellm.org/'
+        apiKeyEnv: 'SUPERAI_MODEL_API_KEY'
+        displayName: 'LiteLLM (SuperAI)'
+        models:
+          - id: 'gpt-5.1-chat'
+            name: 'GPT-5.1 Chat'

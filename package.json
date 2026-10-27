@@ -14,12 +14,13 @@
   },
   "main": "electron/main.cjs",
   "scripts": {
-    "dev:web": "cd bench-app && npm run dev",
-    "dev:electron": "cross-env BENCH_DEV=1 electron electron/main.cjs",
+    "dev:web": "cd superai-app && npm run dev",
+    "dev:electron": "cross-env SUPERAI_DEV=1 node scripts/dev-electron.cjs",
     "dev": "concurrently \"npm:dev:web\" \"npm:dev:electron\"",
-    "build:web": "cd bench-app && npm run build",
-    "build:win": "npm run build:web && electron-builder --win --x64",
-    "build:dir": "npm run build:web && electron-builder --dir --win --x64",
+    "build:web": "cd superai-app && npm run build",
+    "stage:dsh": "node scripts/stage-dsh-runtime.cjs",
+    "build:win": "npm run stage:dsh && npm run build:web && electron-builder --win --x64",
+    "build:dir": "npm run stage:dsh && npm run build:web && electron-builder --dir --win --x64",
     "start": "electron electron/main.cjs"
   },
   "engines": {
@@ -33,38 +34,93 @@
     },
     "files": [
       "electron/**/*",
-      "bench-app/dist/**/*",
-      "!bench-app/src",
-      "!bench-app/node_modules",
-      "!bench-app/.git"
+      "superai-app/dist/**/*",
+      "!superai-app/src",
+      "!superai-app/node_modules",
+      "!superai-app/.git",
+      "!data/sessions{,/**}",
+      "!data/memory{,/**}",
+      "!data/dsh-home{,/**}",
+      "!data/settings.json",
+      "!data/pptist{,/**}",
+      "!data/skills{,/**}",
+      "!workspace{,/**}",
+      "!outputs{,/**}",
+      "!ppt-ai-intro{,/**}",
+      "!python-runtime{,/**}",
+      "!build{,/**}",
+      "!release{,/**}",
+      "!.git{,/**}",
+      "!**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "build/dsh-runtime",
+        "to": "dsh-runtime",
+        "filter": [
+          "**/*",
+          "!**/test-home{,/**}",
+          "!**/node_modules/**/.cache{,/**}",
+          "!**/*.log"
+        ]
+      },
+      {
+        "from": "python-runtime",
+        "to": "python-runtime",
+        "filter": [
+          "**/*",
+          "!**/__pycache__{,/**}",
+          "!**/*.pyc",
+          "!**/pip/cache{,/**}",
+          "!**/pip/_vendor/distlib/*.exe"
+        ]
+      },
+      {
+        "from": "data",
+        "to": "data",
+        "filter": [
+          "skills/**/*",
+          "pptist/**/*",
+          "!skills/**/__pycache__{,/**}",
+          "!skills/**/*.pyc",
+          "!skills/**/*.map",
+          "!pptist/**/*.map",
+          "!pptist/**/.cache{,/**}"
+        ]
+      }
     ],
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
-      "icon": "bench-app/public/icon.ico",
+      "icon": "superai-app/public/icon.ico",
       "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": "bench-app/public/icon.ico",
-      "uninstallerIcon": "bench-app/public/icon.ico",
-      "installerHeaderIcon": "bench-app/public/icon.ico",
+      "installerIcon": "superai-app/public/icon.ico",
+      "uninstallerIcon": "superai-app/public/icon.ico",
+      "installerHeaderIcon": "superai-app/public/icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "SuperAI"
     }
   },
   "devDependencies": {
+    "@deepseek-ai/dsh": "0.2.1-rc.3",
+    "@deepseek-ai/dsh-sdk-client": "0.2.1-rc.3",
     "@yao-pkg/pkg": "^6.5.0",
     "concurrently": "^9.0.0",
     "cross-env": "^7.0.3",
     "electron": "^31.0.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "electron-devtools-installer": "^4.0.0"
   }
 }

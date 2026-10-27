@@ -1,13 +1,12 @@
 // sessions.cjs — 会话持久化（本地 JSON，不依赖服务器）
-// 存储结构：userData/sessions/<id>.json + index.json
-const { app } = require('electron');
+// 存储结构：<appData>/sessions/<id>.json + index.json
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const settings = require('./settings.cjs');
 
 function sessionsDir() {
-  return path.join(app.getPath('userData'), 'sessions');
+  return path.join(settings.appDataDir(), 'sessions');
 }
 
 function indexPath() {
@@ -45,20 +44,24 @@ function get(id) {
   }
 }
 
-/** 创建新会话 */
-function create(workspace) {
+/** 创建新会话
+ *  id 可选：登录态由云端 createCloudConversation 返回数字 id，本地用同一 id 建副本，
+ *  避免本地/云端两套 id。未传则本地 newId()（s-xxx）。指定 id 已存在则直接返回，不重复建。 */
+function create(workspace, id) {
   ensureDir();
-  const id = newId();
+  const sid = id || newId();
+  const existing = get(sid);
+  if (existing) return existing;
   const now = Date.now();
   const session = {
-    id,
+    id: sid,
     title: '新对话',
     workspace: workspace || settings.defaultWorkspace(),
     createdAt: now,
     updatedAt: now,
     messages: [],
   };
-  fs.writeFileSync(path.join(sessionsDir(), id + '.json'), JSON.stringify(session, null, 2), 'utf-8');
+  fs.writeFileSync(path.join(sessionsDir(), sid + '.json'), JSON.stringify(session, null, 2), 'utf-8');
   upsertIndex(session);
   return session;
 }
@@ -97,6 +100,18 @@ function remove(id) {
   fs.writeFileSync(indexPath(), JSON.stringify(idx, null, 2), 'utf-8');
 }
 
+/** 置顶/取消置顶（不改 updatedAt，避免时间错乱）。
+ *  pinned 是会话级属性，必须回写主文件 session.json（数据主存储），
+ *  否则 index.json 丢失/重建时置顶状态会丢。 */
+function togglePin(id) {
+  const session = get(id);
+  if (!session) return grouped();
+  session.pinned = !session.pinned;
+  fs.writeFileSync(path.join(sessionsDir(), id + '.json'), JSON.stringify(session, null, 2), 'utf-8');
+  upsertIndex(session);
+  return grouped();
+}
+
 function upsertIndex(session) {
   const idx = list().filter((s) => s.id !== session.id);
   idx.unshift({
@@ -105,44 +120,35 @@ function upsertIndex(session) {
     workspace: session.workspace,
     updatedAt: session.updatedAt,
     messageCount: session.messages.length,
+    pinned: session.pinned || false,
   });
   fs.writeFileSync(indexPath(), JSON.stringify(idx, null, 2), 'utf-8');
 }
 
-/** 按时间分组（今天/昨天/近 7 天/更早） */
+/** 排序：置顶在前，其余按 updatedAt 倒序（不再分今天/更早）。
+ *  list() 已按 updatedAt 倒序返回，遍历时置顶先收集即可保持顺序。 */
 function grouped() {
   const idx = list();
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const yesterdayStart = todayStart - 86400000;
-  const weekStart = todayStart - 7 * 86400000;
-  const groups = { '今天': [], '昨天': [], '近 7 天': [], '更早': [] };
+  const pinned = [];
+  const others = [];
   for (const s of idx) {
-    const t = s.updatedAt || 0;
-    if (t >= todayStart) groups['今天'].push(s);
-    else if (t >= yesterdayStart) groups['昨天'].push(s);
-    else if (t >= weekStart) groups['近 7 天'].push(s);
-    else groups['更早'].push(s);
+    (s.pinned ? pinned : others).push(s);
   }
-  // 组内摘要
-  const result = [];
-  for (const g of ['今天', '昨天', '近 7 天', '更早']) {
-    if (groups[g].length === 0) continue;
-    for (const s of groups[g]) {
-      const d = new Date(s.updatedAt || 0);
-      const hh = String(d.getHours()).padStart(2, '0');
-      const mm = String(d.getMinutes()).padStart(2, '0');
-      result.push({
-        id: s.id,
-        title: s.title || '新对话',
-        summary: `${s.messageCount || 0} 条消息`,
-        time: `${hh}:${mm}`,
-        group: g,
-        workspace: s.workspace || '',
-      });
-    }
-  }
-  return result;
+  const fmt = (s) => {
+    const d = new Date(s.updatedAt || 0);
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return {
+      id: s.id,
+      title: s.title || '新对话',
+      summary: `${s.messageCount || 0} 条消息`,
+      time: `${hh}:${mm}`,
+      group: s.pinned ? '置顶' : '其他',
+      workspace: s.workspace || '',
+      pinned: !!s.pinned,
+    };
+  };
+  return [...pinned.map(fmt), ...others.map(fmt)];
 }
 
 /** 设置会话工作目录 */
@@ -156,4 +162,4 @@ function setWorkspace(id, workspace) {
   return session;
 }
 
-module.exports = { list, get, create, appendMessage, rename, remove, grouped, setWorkspace };
+module.exports = { list, get, create, appendMessage, rename, remove, grouped, setWorkspace, togglePin };

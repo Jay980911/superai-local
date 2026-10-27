@@ -1,11 +1,15 @@
-// skills.cjs — 扫描 userData/skills/ 目录，读取 SKILL.md frontmatter
-// 不依赖工作目录，技能存 userData/skills/<name>/
-const { app } = require('electron');
+// skills.cjs — 扫描 <appData>/skills/ 目录，读取 SKILL.md frontmatter
+// 不依赖工作目录，技能存 <appData>/skills/<name>/
 const path = require('path');
 const fs = require('fs');
+const { app } = require('electron');
+const settings = require('./settings.cjs');
 
 function skillsDir() {
-  return path.join(app.getPath('userData'), 'skills');
+  // 打包态：技能随包分发在 resources/data/skills（静态只读资源，由 extraResources 落地）；
+  // 开发态：在项目根/data/skills（= appDataDir/data/skills）。
+  if (app && app.isPackaged) return path.join(process.resourcesPath, 'data', 'skills');
+  return path.join(settings.appDataDir(), 'skills');
 }
 function ensureDir() {
   if (!fs.existsSync(skillsDir())) fs.mkdirSync(skillsDir(), { recursive: true });
@@ -13,7 +17,7 @@ function ensureDir() {
 
 /** 解析 YAML frontmatter（简单实现，不引入额外依赖） */
 function parseFrontmatter(raw) {
-  const m = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!m) return { meta: {}, body: raw };
   const meta = {};
   const lines = m[1].split('\n');

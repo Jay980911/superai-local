@@ -5,6 +5,9 @@ release/
 .DS_Store
 Thumbs.db
 .env
-bench-app/node_modules/
-bench-app/dist/
+superai-app/node_modules/
+superai-app/dist/
 *.tsbuildinfo
+data/
+
+build/

@@ -13,8 +13,38 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Syntax check all JS
+          cache: npm
+
+      - name: Install deps
+        run: npm ci || npm install
+
+      - name: Syntax check main-process & scripts (CJS)
         run: |
-          for f in $(find bin src -name '*.js'); do node --check "$f" || exit 1; done
+          for f in electron/*.cjs scripts/*.cjs; do node --check "$f" || exit 1; done
+          echo "cjs syntax ok"
+
+      - name: Type-check & build frontend
+        run: |
+          cd superai-app
+          npm ci || npm install
+          npm run build
+
       - name: Verify package.json is valid
         run: node -e "require('./package.json'); console.log('pkg ok')"
+
+      - name: dsh runtime resolution smoke (stub electron)
+        run: node -e "
+          const Module = require('module');
+          const orig = Module._load;
+          Module._load = function (req) {
+            if (req === 'electron') return { app: { isPackaged: false } };
+            return orig.apply(this, arguments);
+          };
+          const dsh = require('./electron/dsh-client.cjs');
+          const patch = require('./electron/dsh-patch.cjs');
+          console.log('nodeBin =', dsh.resolveNodeBin());
+          console.log('dshBin  =', dsh.resolveDshBin());
+          const yaml = patch.buildPatchYaml([{ id: 't1', name: 'T', baseUrl: 'https://x.com', model: 'm', api: 'openai-completions' }]);
+          if (!yaml || !yaml.includes('superai-t1')) throw new Error('patch yaml 生成异常');
+          console.log('patch yaml ok');
+        "

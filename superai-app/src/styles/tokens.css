@@ -1,0 +1,72 @@
+/* ============================================================
+   SuperAI — Design Tokens v2 · Quiet Luxury（高级简约 · 去 AI 化）
+   纸墨体系：暖中性纸 + 近黑墨色；彩色只表状态。
+   禁忌：渐变霓虹、发光描边、彩色主按钮、AI 紫蓝。
+   ============================================================ */
+:root {
+  /* ---- 色彩 · 静态界面无彩色 ---- */
+  --paper:  #f3f2ee;   /* 纸 · 页面底（暖中性） */
+  --card:   #fbfaf7;   /* 卡 · 内容底 */
+  --white:  #ffffff;   /* 纯白 · 会话区 */
+  --soft:   #eeede8;   /* 浅底 · 悬停/输入 */
+  --ink:    #16161a;   /* 墨 · 主文字/主行动 */
+  --ink-2:  #4a4a52;   /* 次文 */
+  --ink-3:  #8a8a92;   /* 弱文 · 辅助/占位 */
+  --ink-4:  #b0b0b6;   /* 更弱 · 时间戳/足迹 */
+  --rule:   #e4e2db;   /* 发丝线 · 结构分隔 */
+  --rule-2: #d4d2c9;   /* 发丝线 · 次级 */
+
+  /* 状态色（只在表达状态时使用） */
+  --blue:   oklch(0.435 0.055 245);  /* 信息 · 工作目录 chip */
+  --blue-soft: oklch(0.952 0.012 240);
+  --green:  oklch(0.520 0.085 158);  /* 成功 */
+  --amber:  oklch(0.625 0.105 80);   /* 提醒 */
+  --danger: #a33a32;                 /* 危险 · 文字级 */
+
+  /* 行动色 · 墨（主按钮/强调） */
+  --seal:      #1c1c20;
+  --seal-hover:#000000;
+  --seal-soft: #eae8e1;
+
+  /* 语义别名（清理历史 fallback 用） */
+  --paper-2: var(--soft);
+  --line:    var(--rule);
+  --bg-2:    rgba(22, 22, 26, 0.035);
+
+  /* ---- 字体 ---- */
+  --font-display: 'Noto Serif SC', 'Songti SC', 'Noto Serif CJK SC', serif;
+  --font-body: 'Space Grotesk', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', 'Noto Sans Mono CJK SC', ui-monospace, monospace;
+
+  /* ---- 字号 · 行高 ---- */
+  --fs-display: 22px;  --lh-display: 1.4;
+  --fs-title:   15px;  --lh-title: 1.5;
+  --fs-body:    14.5px;--lh-body: 1.8;
+  --fs-ui:      12.5px;
+  --fs-mono:    11.5px;
+  --fs-label:   9.5px;
+
+  /* ---- 形状 ---- */
+  --r-sm: 8px; --r-md: 10px; --r-lg: 14px; --r-xl: 18px;
+
+  /* ---- 间距 · 4 基准 ---- */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px;
+  --s-6: 24px; --s-8: 32px; --s-12: 48px;
+
+  /* ---- 阴影（克制：输入框/浮层/主按钮） ---- */
+  --sh-1: 0 1px 2px rgba(22, 22, 26, 0.04);
+  --sh-2: 0 10px 30px -12px rgba(22, 22, 26, 0.13);
+  --sh-3: 0 18px 50px -18px rgba(22, 22, 26, 0.22);
+  --sh-card: 0 1px 2px rgba(22, 22, 26, 0.03), 0 8px 28px rgba(22, 22, 26, 0.05);
+  --sh-btn: 0 10px 24px -12px rgba(22, 22, 26, 0.5);
+
+  /* ---- 动效 ---- */
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ---- 图标规范 ----
+     24 网格 · stroke-width 2 · linecap butt · linejoin miter
+     容器类图形：白色填充 + 墨色描边；单色灰阶，不用彩色图标 */
+  --icon-grid: 24;
+  --icon-stroke: 2;
+}
