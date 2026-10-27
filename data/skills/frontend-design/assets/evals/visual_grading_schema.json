@@ -1,0 +1,66 @@
+{
+  "version": "1.0.0",
+  "screenshot_required": true,
+  "accepted_visual_evidence_sources": ["playwright", "runtime_cli"],
+  "minimum_revision_loops": 1,
+  "signals": {
+    "copy_leakage": {
+      "severity": "fatal",
+      "description": "User-facing copy leaks spec, review, methodology, or checklist language."
+    },
+    "mixed_visual_dialect": {
+      "severity": "fatal",
+      "description": "The first viewport mixes multiple competing visual dialects without one governing direction."
+    },
+    "blank_primary_stage": {
+      "severity": "fatal",
+      "description": "The primary stage is dominated by empty, decorative, or low-information regions instead of the real task."
+    },
+    "offscreen_primary_task": {
+      "severity": "fatal",
+      "description": "The primary task starts outside the common first viewport or requires scrolling before use."
+    },
+    "summary_first_relapse": {
+      "severity": "major",
+      "description": "Users must parse summary/KPI/explainer regions before reaching the main task."
+    },
+    "unsupported_primary_cta": {
+      "severity": "major",
+      "description": "The primary CTA is not backed by the visible flow, state, or next-step handoff."
+    },
+    "visual_weight_collision": {
+      "severity": "major",
+      "description": "Multiple heavy regions compete for first attention and break the reading path."
+    },
+    "trust_posture_mismatch": {
+      "severity": "major",
+      "description": "A high-trust home surface feels like a generic analytics dashboard instead of calm/control/trust."
+    },
+    "hero_dominance_over_task": {
+      "severity": "major",
+      "description": "Hero copy, slogan, or decorative surfaces dominate the screen more than the primary functional area."
+    },
+    "over_decorated_surface": {
+      "severity": "minor",
+      "description": "Decorative effects exist without hierarchy or state value."
+    },
+    "repeated_supporting_content": {
+      "severity": "minor",
+      "description": "Supporting content is repeated across multiple surfaces."
+    },
+    "generic_microcopy": {
+      "severity": "minor",
+      "description": "CTA, helper, or error copy remains too generic."
+    }
+  },
+  "rebuild_rules": {
+    "fatal_signal_count_gte": 1,
+    "major_signal_count_gte": 2
+  },
+  "signoff_rules": {
+    "require_visual_evidence": true,
+    "preferred_capture_method": "playwright",
+    "allow_runtime_cli_screenshot_fallback": true,
+    "require_at_least_one_revision": true
+  }
+}

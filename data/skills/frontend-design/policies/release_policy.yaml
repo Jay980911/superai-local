@@ -1,0 +1,16 @@
+release_policy:
+  required_checks:
+    - evaluation
+    - security
+    - lifecycle
+    - migration
+    - eval_coverage
+  block_if:
+    - required_gate_failed
+    - required_gate_blocked
+    - missing_rollback_path
+    - unapproved_external_side_effect
+  require_live_benchmark_for_claims:
+    - replaces_existing_skill
+    - quality_improvement
+    - roi_improvement

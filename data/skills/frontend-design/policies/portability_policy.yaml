@@ -1,0 +1,9 @@
+portability_policy:
+  core_is_single_source_of_truth: true
+  wrapper_must_be_thin: true
+  wrapper_metadata_required: true
+  runtime_self_contained: true
+  external_repo_references_allowed: false
+  mutable_state_inside_skill_folder: false
+  relative_paths_only: true
+  reject_symlink_escape: true

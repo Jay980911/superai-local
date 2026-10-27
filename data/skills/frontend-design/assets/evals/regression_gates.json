@@ -1,0 +1,55 @@
+{
+  "version": "2026.6.11-trigger-optimization",
+  "skill": "frontend-design",
+  "min_pass_rate": 0.85,
+  "minimum_pass_rate_delta": 0.1,
+  "maximum_allowed_time_increase_seconds": 60,
+  "maximum_allowed_token_increase": 2500,
+  "maximum_under_trigger_failures": 1,
+  "maximum_over_trigger_failures": 1,
+  "maximum_neighbor_confusion_failures": 1,
+  "required_trigger_classes": [
+    "direct",
+    "indirect",
+    "negative"
+  ],
+  "required_languages": [
+    "zh",
+    "en",
+    "mixed"
+  ],
+  "required_functional_types": [
+    "happy_path",
+    "edge_case",
+    "failure_mode"
+  ],
+  "benchmark_metadata_required": [
+    "skill_version",
+    "git_commit",
+    "host",
+    "model",
+    "timestamp",
+    "grader_version"
+  ],
+  "must_pass": [
+    "trigger-01",
+    "trigger-02",
+    "trigger-02b",
+    "trigger-04",
+    "trigger-05",
+    "trigger-06",
+    "functional-02",
+    "functional-03",
+    "functional-04",
+    "functional-05",
+    "functional-06",
+    "functional-07",
+    "functional-08",
+    "functional-09",
+    "functional-12",
+    "functional-16",
+    "functional-17",
+    "functional-18",
+    "functional-19"
+  ]
+}

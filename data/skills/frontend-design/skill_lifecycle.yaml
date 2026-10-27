@@ -1,0 +1,66 @@
+name: frontend-design
+status: draft
+owner: "Allan Yiin"
+archetype: executor
+primary_structure_pattern: pipeline+reviewer
+lifecycle:
+  created_at: 2026-04-20
+  last_validated_at: 2026-08-05
+  last_released_at: null
+  review_interval_days: 60
+  next_review_due: 2026-09-17
+support:
+  primary_hosts:
+    - agent-skills
+    - codex
+    - openclaw
+  secondary_hosts:
+    - claude-code
+    - generic-llm-agent
+  unsupported_hosts:
+    - pure-chat-without-files
+    - hosts-without-runtime-or-screenshot-capability
+risk:
+  external_side_effects: false
+  requires_secrets: false
+  data_sensitivity: medium
+dependencies:
+  scripts:
+    - scripts/audit_frontend_principles.py
+    - scripts/audit_frontend_runtime.mjs
+  references:
+    - references/quality_checklist.md
+    - references/readiness_report.md
+    - references/migration-governance.md
+    - references/phase-01-context-and-brief.md
+    - references/phase-02-user-story-and-state-machine.md
+    - references/phase-03-token-board-spec.md
+    - references/phase-04-information-priority-and-layout.md
+    - references/phase-05-responsive-and-viewport.md
+    - references/phase-06-visual-qa-and-signoff.md
+stewardship:
+  reviewers:
+    - design-system-owner
+    - frontend-owner
+    - accessibility-owner
+  stale_after_days: 120
+  escalation:
+    stale: needs-maintenance
+    no_owner: orphaned
+portfolio:
+  overlaps_with:
+    - vibe-coding-guidelines
+    - spec-organizer
+    - technical-documentation-writer
+    - slide-content-planner
+    - pptx-maker
+  hands_off_to:
+    - vibe-coding-guidelines
+    - spec-organizer
+    - technical-documentation-writer
+    - slide-content-planner
+    - pptx-maker
+  depends_on: []
+  supersedes: []
+  deprecated_by: null
+  shares_tool_contract_with: []

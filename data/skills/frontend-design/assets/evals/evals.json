@@ -1,0 +1,435 @@
+{
+  "skill": "frontend-design",
+  "version": "2026.6.11-trigger-optimization",
+  "benchmark_metadata_required": [
+    "skill_version",
+    "git_commit",
+    "host",
+    "model",
+    "temperature",
+    "run_timestamp",
+    "grader_version"
+  ],
+  "evals": [
+    {
+      "id": "trigger-01",
+      "name": "saas-landing-page",
+      "type": "trigger",
+      "language": "zh",
+      "trigger_class": "direct",
+      "coverage_tags": ["should-trigger", "landing-page", "visual-direction", "happy-path"],
+      "prompt": "幫我做一個 SaaS landing page，風格要高級感、乾淨、現代，而且首屏不要只是大標題和產品截圖。",
+      "expected_output": "應載入 frontend-design，先確認受眾、品牌語氣、首屏主任務與 responsive 約束，再設計 landing page。",
+      "expectations": [
+        "辨識這是網站與 landing page UI 設計任務。",
+        "要求首屏不被 hero 或裝飾壓過主要價值。",
+        "包含 responsive 與視覺品質檢查。"
+      ]
+    },
+    {
+      "id": "trigger-02",
+      "name": "react-form-ui-polish",
+      "type": "trigger",
+      "language": "zh",
+      "trigger_class": "direct",
+      "coverage_tags": ["should-trigger", "component-ui", "frontend", "happy-path"],
+      "prompt": "把這個 React 表單設計得更漂亮、可讀性更好，順便補 loading、empty、error 和 focus 狀態。",
+      "expected_output": "應載入 frontend-design，處理 React 表單的 UI 視覺、狀態、可讀性與互動設計。",
+      "expectations": [
+        "辨識 React 表單是前端 UI 任務。",
+        "覆蓋 loading、empty、error、focus 等狀態。",
+        "不只做 CSS polish，還要檢查互動與可讀性。"
+      ]
+    },
+    {
+      "id": "trigger-02b",
+      "name": "dashboard-card-farm-rewrite",
+      "type": "trigger",
+      "language": "zh",
+      "trigger_class": "direct",
+      "coverage_tags": ["should-trigger", "dashboard", "no-card-farm", "overlap-neighbor"],
+      "prompt": "不要再做成卡片堆疊，也不要 hero + preview 混搭，幫我重做這個 dashboard，讓主任務一進畫面就能開始。",
+      "expected_output": "應載入 frontend-design，優先處理 dashboard/workbench 的主任務、資訊優先序、首屏與 card farm 問題。",
+      "expectations": [
+        "將 card farm 與 hero 壓主功能視為硬性問題。",
+        "先定義 primary task surface。",
+        "要求首屏可開始主任務。"
+      ]
+    },
+    {
+      "id": "trigger-03",
+      "name": "backend-api-validation-negative",
+      "type": "trigger",
+      "language": "zh",
+      "trigger_class": "negative",
+      "coverage_tags": ["should-not-trigger", "near-miss", "backend-only"],
+      "prompt": "只需要寫一個後端 API 的資料驗證，不需要任何畫面、元件、流程或前端 UI。",
+      "expected_output": "不應載入 frontend-design；這是純後端資料驗證任務，應交給一般 coding 或後端相關流程。",
+      "expectations": [
+        "不要因為提到 API 或驗證就觸發 frontend-design。",
+        "確認使用者明確排除畫面與 UI。",
+        "避免搶走純後端任務。"
+      ]
+    },
+    {
+      "id": "trigger-04",
+      "name": "english-ui-redesign",
+      "type": "trigger",
+      "language": "en",
+      "trigger_class": "indirect",
+      "coverage_tags": ["should-trigger", "ui-ux", "redesign", "mixed-language-recall"],
+      "prompt": "Redesign this admin interface so it feels less like a generic card dashboard and more like a focused workflow tool.",
+      "expected_output": "Use frontend-design because the prompt asks for UI/UX redesign, admin interface structure, workflow focus and anti-card-farm layout.",
+      "expectations": [
+        "Triggers on English UI/UX and redesign wording.",
+        "Recognizes admin interface and workflow tool as frontend design surfaces.",
+        "Includes anti-card-farm and primary workflow constraints."
+      ]
+    },
+    {
+      "id": "trigger-05",
+      "name": "mixed-tailwind-workbench",
+      "type": "trigger",
+      "language": "mixed",
+      "trigger_class": "indirect",
+      "coverage_tags": ["should-trigger", "tailwind", "workbench", "responsive"],
+      "prompt": "這個 Tailwind workbench 看起來很 AI 味，請重做 layout，讓 primary task 在 mobile/desktop 第一屏都明顯。",
+      "expected_output": "應載入 frontend-design，處理 Tailwind workbench 的 layout、anti-AI-slop、primary task 與 responsive viewport gate。",
+      "expectations": [
+        "觸發中英混合 Tailwind/workbench 語境。",
+        "要求 desktop/mobile 首屏主任務可見。",
+        "避免 generic AI-style layout。"
+      ]
+    },
+    {
+      "id": "trigger-06",
+      "name": "design-system-component-library",
+      "type": "trigger",
+      "language": "mixed",
+      "trigger_class": "direct",
+      "coverage_tags": ["should-trigger", "design-system", "component-library", "overlap-neighbor"],
+      "prompt": "幫我規劃一套 design system 和 component library，包含 buttons、tabs、drawers、empty/error states，並示範在產品頁裡怎麼用。",
+      "expected_output": "應載入 frontend-design，先建立 token 與元件使用規則，再處理 component UI 與產品頁示範。",
+      "expectations": [
+        "辨識 design system 與 component library 任務。",
+        "包含 token、元件狀態與控制項選型。",
+        "要求示範在真實產品頁使用。"
+      ]
+    },
+    {
+      "id": "trigger-07",
+      "name": "product-strategy-negative",
+      "type": "trigger",
+      "language": "zh",
+      "trigger_class": "negative",
+      "coverage_tags": ["should-not-trigger", "near-miss", "product-strategy"],
+      "prompt": "先不要做畫面，我只想討論產品定位、商業模式、競品差異和市場進入策略。",
+      "expected_output": "不應載入 frontend-design；這是產品策略研究，不是網站、Web App 或 UI 交付任務。",
+      "expectations": [
+        "不要因為出現產品或競品就觸發。",
+        "確認使用者明確排除畫面。",
+        "建議交給策略或研究流程。"
+      ]
+    },
+    {
+      "id": "functional-01",
+      "name": "dashboard-ui-states",
+      "type": "functional",
+      "language": "zh",
+      "trigger_class": "direct",
+      "coverage_tags": ["should-trigger", "happy-path", "dashboard", "states"],
+      "prompt": "建立一個產品儀表板 UI，必須包含 loading、empty、error state，且不要把所有指標做成等權卡片。",
+      "expected_output": "輸出 token-first、state-complete、accessibility-aware 的 dashboard UI 方案，並避免 card farm。",
+      "expectations": [
+        "先定義狀態與資訊優先序。",
+        "覆蓋 loading、empty、error state。",
+        "明確避免等權卡片堆疊。"
+      ]
+    },
+    {
+      "id": "functional-01b",
+      "name": "modern-premium-app-home",
+      "type": "functional",
+      "language": "mixed",
+      "trigger_class": "indirect",
+      "coverage_tags": ["should-trigger", "edge-case", "landing-page", "anti-hero"],
+      "prompt": "我只說想要 modern、premium 的記帳 app 首頁。先補 design context brief，再定義 memorable hook，但不要用 giant slogan 佔掉半個首屏。",
+      "expected_output": "先補 design context brief 與 memorable hook，再設計不被巨大 slogan 壓過主任務的 app home UI。",
+      "expectations": [
+        "處理模糊風格詞時先補 context。",
+        "避免 giant slogan 佔據首屏。",
+        "保留 app 首頁的主任務。"
+      ]
+    },
+    {
+      "id": "functional-02",
+      "name": "saas-onboarding-flow",
+      "type": "functional",
+      "language": "zh",
+      "trigger_class": "direct",
+      "coverage_tags": ["should-trigger", "happy-path", "user-flow", "onboarding"],
+      "prompt": "設計一個三步驟 SaaS onboarding flow，先給我 user journey 或 user flow，再產出頁面與檢查命令。",
+      "expected_output": "先輸出 journey/user flow，再產出頁面方案、系統狀態可見性、Gestalt 檢查與 audit command。",
+      "expectations": [
+        "先產出 journey 或 user flow artifact。",
+        "包含狀態可見性與檢查命令。",
+        "不是直接堆三張 onboarding card。"
+      ]
+    },
+    {
+      "id": "functional-03",
+      "name": "reusable-buttons-guideline",
+      "type": "functional",
+      "language": "zh",
+      "trigger_class": "direct",
+      "coverage_tags": ["should-trigger", "component-library", "design-system"],
+      "prompt": "幫我設計一組可重用的按鈕元件，除了程式碼還要有 guideline 文件，並檢查是否出現模糊 CTA 或 AI slop 樣式。",
+      "expected_output": "輸出可重用 button component、guideline sections、anti-pattern scan、具體 CTA copy 與元件規則。",
+      "expectations": [
+        "包含 component code 與 guideline。",
+        "檢查模糊 CTA 和 AI slop。",
+        "定義可重用元件規則。"
+      ]
+    },
+    {
+      "id": "functional-04",
+      "name": "workbench-condense-interactions",
+      "type": "functional",
+      "language": "zh",
+      "trigger_class": "direct",
+      "coverage_tags": ["should-trigger", "workbench", "no-card-farm", "information-architecture"],
+      "prompt": "請把 7 個工作台需求濃縮成 3 個互動區，避免 dashboard/card farm/stacked sections layout。先給 task model、state model、資訊分類與 visibility plan，再做 UI。",
+      "expected_output": "輸出 task model、state model、資訊分類、visibility plan 與避免 stacked workbench 的 UI 方案。",
+      "expectations": [
+        "將 7 個需求收斂成互動區。",
+        "先做 task/state model 與 visibility plan。",
+        "避免 card farm 與 stacked sections。"
+      ]
+    },
+    {
+      "id": "functional-05",
+      "name": "review-workbench-home",
+      "type": "functional",
+      "language": "zh",
+      "trigger_class": "direct",
+      "coverage_tags": ["should-trigger", "workbench", "primary-task", "state-matrix"],
+      "prompt": "設計一個審核工作台。先輸出唯一主目標、次目標、低頻目標、罕見目標，再做 state matrix 與資訊架構表，最後才做 UI。首屏只能有 1 個主操作區、1 個狀態區、1 個次要摘要。",
+      "expected_output": "先輸出任務分層、state matrix、資訊架構表與首屏限制，再設計審核工作台 UI。",
+      "expectations": [
+        "明確區分主目標與低頻目標。",
+        "建立 state matrix 和資訊架構表。",
+        "遵守首屏 1 主操作區限制。"
+      ]
+    },
+    {
+      "id": "functional-06",
+      "name": "trusted-daily-homepage",
+      "type": "functional",
+      "language": "zh",
+      "trigger_class": "direct",
+      "coverage_tags": ["should-trigger", "homepage", "no-hero-preview", "no-card-farm"],
+      "prompt": "重做一個高信任、日常開啟的首頁。不要做成 landing page hero 加 dashboard 預覽，也不要右邊堆四張摘要卡。先輸出 kept_in_first_viewport 與 removed_or_deferred，再做 UI。",
+      "expected_output": "輸出 first viewport inventory、removed/deferred items，避免 hero-preview hybrid 和 card farm，並讓主任務成為主舞台。",
+      "expectations": [
+        "先列 kept 與 deferred。",
+        "避免 hero + dashboard preview 混搭。",
+        "讓 task-first main stage 成為核心。"
+      ]
+    },
+    {
+      "id": "functional-07",
+      "name": "project-review-system-home",
+      "type": "functional",
+      "language": "zh",
+      "trigger_class": "direct",
+      "coverage_tags": ["should-trigger", "admin-interface", "workbench", "no-card-farm"],
+      "prompt": "設計一個專案審核系統首頁。先用白話說明這是什麼系統、受眾是誰、使用者一進來先看什麼、用什麼機制引導他切換到下一個功能；不要做成卡片農場，並讓當前任務盡量在首屏完成。",
+      "expected_output": "輸出 system purpose、audience、entry focus、navigation mechanism、next-step handoff 與 no-card-farm UI。",
+      "expectations": [
+        "先說明系統目的和受眾。",
+        "定義 entry focus 與下一步機制。",
+        "當前任務盡量在首屏完成。"
+      ]
+    },
+    {
+      "id": "functional-08",
+      "name": "approval-interface-state-machine",
+      "type": "functional",
+      "language": "zh",
+      "trigger_class": "direct",
+      "coverage_tags": ["should-trigger", "workflow-ui", "state-machine", "primary-task"],
+      "prompt": "設計一個請款審批介面。不要從功能清單開始，先給 user story、state machine、互動模型，再做 UI。主任務要絕對突出，次要資訊延後揭露，功能區要佔絕大多數面積，避免任何重複內容或沒意義的區塊。",
+      "expected_output": "輸出 user story、state machine、interaction model，再做主任務突出且次要資訊延後揭露的審批 UI。",
+      "expectations": [
+        "不從功能清單開始。",
+        "主任務和功能區必須占主導。",
+        "去除重複與無意義區塊。"
+      ]
+    },
+    {
+      "id": "functional-09",
+      "name": "visual-qa-after-first-ui",
+      "type": "functional",
+      "language": "zh",
+      "trigger_class": "indirect",
+      "coverage_tags": ["should-trigger", "visual-qa", "runtime-gate", "edge-case"],
+      "prompt": "做完第一版 UI 後不要直接收工。請啟動頁面、用 Playwright 截圖，根據畫面批評主任務是否夠突出、功能區是否佔大多數面積、是否有重複或無意義內容，修正後再交付。",
+      "expected_output": "執行 screenshot review、visual critique、revision loop 與 viewport feedback；未驗證不得宣稱完成。",
+      "expectations": [
+        "使用 Playwright 或 fallback runtime audit。",
+        "根據畫面批評主任務和功能區占比。",
+        "根據 visual critique 實際修正 UI 後才交付。"
+      ]
+    },
+    {
+      "id": "functional-10",
+      "name": "design-token-document",
+      "type": "functional",
+      "language": "zh",
+      "trigger_class": "direct",
+      "coverage_tags": ["should-trigger", "design-system", "token-board"],
+      "prompt": "受眾確認後，先做一份具體的 design token 文件，像 theme board 一樣清楚列出 palette、字體、spacing、radius、shadow、motion，並說明為什麼適合這群用戶，再開始做元件。",
+      "expected_output": "先輸出 token spec document、audience rationale、palette/typography/spacing/radius/shadow/motion，再開始元件設計。",
+      "expectations": [
+        "先產生設計 token 文件。",
+        "說明 token 與受眾的關係。",
+        "不要直接硬編元件樣式。"
+      ]
+    },
+    {
+      "id": "functional-11",
+      "name": "brand-resource-token-check",
+      "type": "functional",
+      "language": "zh",
+      "trigger_class": "indirect",
+      "coverage_tags": ["should-trigger", "brand-source", "responsive", "overlap-neighbor"],
+      "prompt": "這是第三方品牌整合頁面。先查官方 brand resource / brand colors，再做 token 文件；同時確保 responsive 版面不會讓主要功能超出可視範圍。",
+      "expected_output": "查官方 brand source，建立 brand color/token check，並確保 responsive primary task fit。",
+      "expectations": [
+        "使用官方品牌來源。",
+        "將品牌資訊轉成 token。",
+        "確認 responsive 版面不讓主功能出界。"
+      ]
+    },
+    {
+      "id": "functional-12",
+      "name": "control-selection-for-workbench",
+      "type": "functional",
+      "language": "zh",
+      "trigger_class": "direct",
+      "coverage_tags": ["should-trigger", "control-selection", "workbench", "no-card-farm"],
+      "prompt": "這是一個多步驟審核工作台。不要把每個功能都做成卡片，先說明該用 tabs、step flow、drawer、accordion 還是 modal，並解釋控制項選用如何支援主任務與下一步切換。",
+      "expected_output": "輸出 control choice rationale，避免 card farm，並使控制項支援主任務與下一步切換。",
+      "expectations": [
+        "比較 tabs、step flow、drawer、accordion、modal。",
+        "控制項選擇必須服務主任務。",
+        "不把每個功能做成卡片。"
+      ]
+    },
+    {
+      "id": "functional-13",
+      "name": "submission-page-user-states",
+      "type": "functional",
+      "language": "zh",
+      "trigger_class": "direct",
+      "coverage_tags": ["should-trigger", "state-driven-ui", "information-architecture"],
+      "prompt": "請先把這個送件頁拆成 user state：empty、drafting、validating、blocked、resolved、submitted，對每個 state 規定顯示策略，再做資訊分類、IA 表、metadata schema，最後用兩階段方式先生成版面再以 UX reviewer 身份刪掉首屏多餘資訊。",
+      "expected_output": "輸出 state-driven visibility、information role classification、IA table、metadata schema 與 two-pass UX review。",
+      "expectations": [
+        "每個 user state 都有顯示策略。",
+        "產出資訊分類與 IA 表。",
+        "第二階段刪除首屏多餘資訊。"
+      ]
+    },
+    {
+      "id": "functional-14",
+      "name": "internal-rules-no-ui-copy-leak",
+      "type": "functional",
+      "language": "zh",
+      "trigger_class": "indirect",
+      "coverage_tags": ["should-trigger", "product-language", "edge-case", "overlap-neighbor"],
+      "prompt": "這一回合同時有 vibe-coding-guidelines。請先整理 spec 與 AGENTS 規則，但不要把「避免 card farm」「只保留一個主行動」這類內部規則直接變成首頁標題。最後交付的 UI copy 必須像真產品，不像設計 review。",
+      "expected_output": "區分 internal artifact boundary 與 product voice，避免 process language leak，將規格語言改寫成真產品 UI copy。",
+      "expectations": [
+        "正確處理與 vibe-coding-guidelines 的 handoff。",
+        "內部規則不得外漏成 UI 文案。",
+        "產品文案要像真產品。"
+      ]
+    },
+    {
+      "id": "functional-15",
+      "name": "trusted-home-emotional-job",
+      "type": "functional",
+      "language": "zh",
+      "trigger_class": "direct",
+      "coverage_tags": ["should-trigger", "homepage", "visual-direction", "anti-cliche"],
+      "prompt": "重做一個高信任、日常開啟的首頁。先定義 emotional job、avoided tone 與 trust posture，再做 UI。不要用 donut chart + progress bars，也不要讓 editorial 背景、高信任 analytics 大卡、admin 表格混在一起；CTA 只有在 flow 支撐時才可做成 primary。",
+      "expected_output": "輸出 emotional job、avoided tone、trust posture、direction purity，避免 generic analytics dashboard cliché，並檢查 CTA 是否有 flow 支撐。",
+      "expectations": [
+        "先定義情緒任務與信任姿態。",
+        "避免混雜視覺語言和 dashboard cliché。",
+        "Primary CTA 必須由流程支撐。"
+      ]
+    },
+    {
+      "id": "functional-16",
+      "name": "visual-failure-rubric",
+      "type": "functional",
+      "language": "zh",
+      "trigger_class": "indirect",
+      "coverage_tags": ["should-trigger", "visual-qa", "failure-mode"],
+      "prompt": "做完第一版首頁後，請不要只說『需要再調整』。依 visual-failure-rubric 輸出 fatal signals、major signals、minor signals、rebuild required，若命中 copy leakage 或 mixed visual dialect 就直接判定要重做，不可宣稱完成。",
+      "expected_output": "套用 visual failure rubric，列出 fatal/major/minor signals，命中 fatal 時標記 rebuild required 且不得 false completion。",
+      "expectations": [
+        "使用 visual-failure-rubric。",
+        "copy leakage 或 mixed visual dialect 命中時要求重做。",
+        "不得把 polish 當完成。"
+      ]
+    },
+    {
+      "id": "functional-17",
+      "name": "primary-task-definition-of-done",
+      "type": "functional",
+      "language": "zh",
+      "trigger_class": "direct",
+      "coverage_tags": ["should-trigger", "primary-task", "viewport", "definition-of-done"],
+      "prompt": "這個畫面的主任務必須在第一個 viewport 內就能開始，功能區要是主角，不可被 hero 或口號壓過；同時一次只聚焦一個功能，其餘內容先隱藏。請把這三條當成 Definition of Done，而不是附帶建議。",
+      "expected_output": "把 primary task in viewport、task area dominant、one primary function focus 作為 Definition of Done 強制執行。",
+      "expectations": [
+        "主任務必須在第一個 viewport 開始。",
+        "功能區是視覺主角。",
+        "一次只聚焦一個功能。"
+      ]
+    },
+    {
+      "id": "functional-18",
+      "name": "runtime-viewport-audit-required",
+      "type": "functional",
+      "language": "mixed",
+      "trigger_class": "direct",
+      "coverage_tags": ["should-trigger", "runtime-gate", "workbench", "failure-mode"],
+      "prompt": "這是一個可本地運行的記帳 dashboard / workbench。不要只靠靜態說明，第一版 layout 出來後就必須跑 runtime viewport audit，若 desktop 或 mobile 任一 viewport 出現 hero 壓主功能、主舞台占比不足、重要區塊堆到首屏外，或只有 tablist 沒有真正 hidden/tabpanel 切換，就直接判定 fail 並重做。若外部截圖或瀏覽器工具受阻，也要改用本地 CLI 產生結果與 screenshot，不得只做口頭解釋。",
+      "expected_output": "要求 runtime CLI，對 hero dominance、below-fold stacking、fake disclosure、mobile primary task offscreen 都要 fail 並重做。",
+      "expectations": [
+        "第一版 layout 後執行 runtime viewport audit。",
+        "任一 desktop/mobile fail 都不得完成。",
+        "外部截圖受阻時使用本地 CLI 與 screenshot。"
+      ]
+    },
+    {
+      "id": "functional-19",
+      "name": "screenshot-permission-fallback",
+      "type": "functional",
+      "language": "mixed",
+      "trigger_class": "indirect",
+      "coverage_tags": ["should-trigger", "runtime-gate", "failure-mode", "edge-case"],
+      "prompt": "前端工作台已可本地運行。執行過程遇到外部 Playwright / browser screenshot 權限阻擋時，不應回報『無法截圖所以只能描述』；必須改跑 repo 內建的 runtime audit CLI，直接輸出 desktop / mobile 結果與 screenshot 路徑，並依 FAIL 原因修正。",
+      "expected_output": "使用 local runtime CLI，回報 screenshot paths 和 desktop/mobile 結果，並將 fail results 視為阻擋完成。",
+      "expectations": [
+        "不得用權限不足當口頭完成理由。",
+        "改用 repo 內建 runtime audit CLI。",
+        "依 FAIL 原因修正後才能交付。"
+      ]
+    }
+  ]
+}
