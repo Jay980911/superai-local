@@ -285,6 +285,15 @@ app.whenReady().then(() => {
   // 注入 image-gen 脚本所需环境变量（dsh 子进程经 ...process.env 继承）
   process.env.SUPERAI_SETTINGS = path.join(s.appDataDir(), 'settings.json');
   process.env.SUPERAI_IMAGEGEN = path.join(__dirname, '..', 'scripts', 'image-gen.mjs');
+  // Unsplash 图库 key + 代理（image-gen 图库模式需要访问境外 API）
+  const cfg = s.load();
+  if (cfg.unsplashKey) process.env.UNSPLASH_ACCESS_KEY = cfg.unsplashKey;
+  if (cfg.proxy) {
+    process.env.HTTPS_PROXY = cfg.proxy;
+    process.env.HTTP_PROXY = cfg.proxy;
+    process.env.NODE_USE_ENV_PROXY = '1';
+  }
+  console.log(`[SuperAI] image-gen env: unsplash=${cfg.unsplashKey ? 'on' : 'off'} proxy=${cfg.proxy || 'off'}`);
   if (app.isPackaged) {
     const runtime = dshRuntimePaths();
     if (runtime) {
@@ -440,7 +449,7 @@ ipcMain.handle('agent:run', async (e, input, history, workspace, sessionId) => {
       dshBin: runtime.dshBin,
       onEvent: (event) => {
         if (win && !win.isDestroyed()) {
-          win.webContents.send('agent:event', event);
+          win.webContents.send('agent:event', { ...event, sessionId });
         }
       },
     });
@@ -536,7 +545,8 @@ ipcMain.handle('files:convertPptx', async (_e, p, workspace) => {
 });
 
 ipcMain.handle('files:openSystem', (_e, p, workspace) => {
-  const abs = resolveAbs(p, workspace || settings.defaultWorkspace());
+  const ws = workspace || settings.defaultWorkspace();
+  const abs = p ? resolveAbs(p, ws) : ws;
   if (!abs) return { ok: false, error: '无法解析路径' };
   return shell.openPath(abs).then(msg => (msg ? { ok: false, error: msg } : { ok: true }));
 });

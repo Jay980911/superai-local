@@ -101,10 +101,12 @@ export function TreePane({
   fileTree,
   activePath,
   onOpenFile,
+  workspace,
 }: {
   fileTree: FileEntry[];
   activePath?: string;
   onOpenFile: (path: string) => void;
+  workspace?: string;
 }) {
   const tree = useMemo(() => buildTree(fileTree), [fileTree]);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
@@ -125,6 +127,10 @@ export function TreePane({
           <div className="nm">工作目录</div>
           <div className="sub">{fileCount} 个文件</div>
         </div>
+        <div className="grow" />
+        <button className="icon-btn" title="打开所在文件夹" onClick={() => {
+          if (workspace) (window as any).superai?.openSystem?.('', workspace);
+        }}>📂</button>
       </div>
       <div className="tlist">
         {tree.length === 0 ? (
@@ -554,7 +560,9 @@ export function OutputPanel({
         <button className="icon-btn" title="折叠成果面板" onClick={onCollapse}>»</button>
       </div>
       <div className="out-body">
-        {pane === 'tree' && <TreePane fileTree={fileTree} activePath={activeFile?.path} onOpenFile={onOpenFile} />}
+        <div style={{ display: pane === 'tree' ? 'block' : 'none', height: '100%' }}>
+          <TreePane fileTree={fileTree} activePath={activeFile?.path} onOpenFile={onOpenFile} workspace={workspace} />
+        </div>
         {pane === 'code' && hasContent && activeFile && (
           <CodePane fileName={activeFile.name} filePath={activeFile.path} content={fileContent} workspace={workspace} onToast={onToast} onSaved={onFileSaved} />
         )}

@@ -387,6 +387,18 @@ function residentKey(model, dshHome, patchFile) {
 }
 
 function spawnRuntime(model, workspace, dshHome, patchFile, nodeBin, dshBin) {
+  // 显式从 settings 补注入 image-gen 所需 env（防止 process.env 被中间层过滤）
+  try {
+    const settings = require('./settings.cjs');
+    const cfg = settings.load();
+    if (cfg.unsplashKey) process.env.UNSPLASH_ACCESS_KEY = cfg.unsplashKey;
+    if (cfg.proxy) {
+      process.env.HTTPS_PROXY = cfg.proxy;
+      process.env.HTTP_PROXY = cfg.proxy;
+      process.env.NODE_USE_ENV_PROXY = '1';
+    }
+  } catch { /* settings 加载失败不阻塞 spawn */ }
+  console.log(`[dsh-client] spawn env: UNSPLASH=${process.env.UNSPLASH_ACCESS_KEY ? 'on' : 'off'} PROXY=${process.env.HTTPS_PROXY || 'off'} IMAGEGEN=${process.env.SUPERAI_IMAGEGEN ? 'on' : 'off'}`);
   return spawn(nodeBin, [dshBin, '--profile', 'sdk', '--patch', patchFile], {
     cwd: workspace,
     env: {
@@ -773,12 +785,19 @@ async function doRun({ model, workspace, input, sessionId, dshHome, patchFile, o
     // 保证「生成文档后右侧栏自动展开并展示文件」一定发生（不再依赖缺失的 tool/result）。
     try {
       const after = await snapshotWorkspace(workspace);
+      const artifactFiles = [];
       for (const [rel, mtime] of after) {
         const before = wsSnapshot.get(rel);
         if (before === undefined || mtime > before + 100) {
-          emitFileEvent(path.resolve(workspace, rel), before === undefined ? '生成' : '编辑');
+          const absPath = path.resolve(workspace, rel);
+          const action = before === undefined ? '生成' : '编辑';
+          emitFileEvent(absPath, action);
+          artifactFiles.push({ name: path.basename(absPath), path: absPath, action });
         }
       }
+      // 目录扫描发现的脚本产物不一定对应 dsh 的 file/tool 事件；单独发送
+      // 本轮成果清单，让前端可以在回合收尾时按主产物优先级补开 PPTX/HTML/MD。
+      if (artifactFiles.length > 0) onEvent({ type: 'artifacts', files: artifactFiles });
     } catch (err) {
       if (TRACE) console.log('[dsh-client] 目录 diff 失败:', err.message);
     }

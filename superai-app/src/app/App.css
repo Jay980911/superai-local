@@ -66,6 +66,10 @@
   font-size: 10.5px;
   color: var(--ink-2);
   letter-spacing: 0.02em;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .chip.dir { background: var(--blue-soft); color: oklch(0.375 0.105 245); }
 .chip.seal { background: var(--seal-soft); color: var(--seal); }
@@ -151,13 +155,15 @@
 .search .sclear:hover { color: var(--ink); }
 .sempty { padding: 28px 12px; text-align: center; color: var(--ink-3); font-size: 12px; }
 
-.side-scroll { flex: 1; overflow: auto; padding: 0 8px; }
+.side-scroll { flex: 1; overflow: auto; padding: 0 5px; }
+.show-more { display: block; width: 100%; text-align: center; padding: 8px 6px; font-size: 11px; color: var(--ink-3); background: none; border: none; cursor: pointer; border-radius: 8px; transition: 0.15s; }
+.show-more:hover { background: rgba(255,255,255,0.6); color: var(--ink-2); }
 .grp { padding: 12px 8px 6px; display: flex; align-items: center; gap: 8px; }
 .grp .up { flex: 1; }
 .grp .plus { color: var(--ink-3); font-size: 12px; width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; }
 .grp .plus:hover { background: var(--soft); color: var(--ink); }
 
-.srow { display: flex; align-items: center; gap: 9px; padding: 10px 8px; border-radius: 10px; cursor: pointer; position: relative; transition: 0.18s var(--ease); border: 1px solid transparent; }
+.srow { display: flex; align-items: center; gap: 8px; padding: 7px 6px; border-radius: 10px; cursor: pointer; position: relative; transition: 0.18s var(--ease); border: 1px solid transparent; min-height: 34px; }
 .srow:hover { background: rgba(255, 255, 255, 0.7); border-color: rgba(255, 255, 255, 0.4); }
 .srow.on { background: rgba(255, 255, 255, 0.92); box-shadow: var(--sh-1); border-color: transparent; }
 .srow.on::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 2.5px; border-radius: 2px; background: var(--seal); }
@@ -178,15 +184,16 @@
 .userbar { flex: none; display: flex; align-items: center; gap: 10px; margin: 8px; padding: 10px 11px; border: 1px solid rgba(255, 255, 255, 0.55); border-radius: 12px; background: rgba(255, 255, 255, 0.5); }
 .avatar { width: 30px; height: 30px; border-radius: 8px; flex: none; display: grid; place-items: center; background: var(--ink); color: var(--paper); font-size: 11px; font-weight: 600; }
 .userbar .u1 { font-size: 12px; font-weight: 500; }
-.userbar .u2 { font-family: var(--font-mono); font-size: 9px; color: var(--ink-3); letter-spacing: 0.05em; margin-top: 2px; }
+.userbar .u2 { font-family: var(--font-body); font-size: 10.5px; color: var(--ink-2); letter-spacing: 0.02em; margin-top: 2px; font-weight: 700; }
 .userbar .grow { flex: 1; }
 .upgrade { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.1em; padding: 3px 7px; border-radius: 5px; border: 1px solid color-mix(in oklch, var(--seal) 38%, transparent); color: var(--seal); }
 
 /* ===== 中：主会话 · 纯白 ===== */
 .chat { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--white); }
-.chat-head { height: 58px; flex: none; display: flex; align-items: center; gap: 11px; padding: 0 22px; border-bottom: 1px solid var(--rule); background: var(--white); }
-.chat-head .ttl { font-family: var(--font-display); font-size: 17px; font-weight: 600; letter-spacing: 0.03em; }
-.chat-head .meta { font-family: var(--font-mono); font-size: 9.5px; color: var(--ink-3); letter-spacing: 0.06em; margin-top: 3px; }
+.chat-head { height: 58px; flex: none; display: flex; align-items: center; gap: 11px; padding: 0 22px; border-bottom: 1px solid var(--rule); background: var(--white); overflow: hidden; }
+.chat-head > div:not(.grow):not(.chip):not(.icon-btn) { min-width: 0; overflow: hidden; }
+.chat-head .ttl { font-family: var(--font-display); font-size: 17px; font-weight: 600; letter-spacing: 0.03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-head .meta { font-family: var(--font-body); font-size: 11px; color: var(--ink-3); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-head .grow { flex: 1; }
 .side-open { display: none; }
 .app[data-side="off"] .side-open { display: grid; }
@@ -219,7 +226,7 @@
 .send.steer { width: auto; padding: 0 12px; background: transparent; color: var(--seal); border: 1px solid var(--seal); font-size: 12px; font-weight: 600; box-shadow: none; }
 .send.steer:hover:not(:disabled) { background: var(--seal); color: var(--paper); border-color: transparent; transform: none; }
 .send.steer:disabled { opacity: .4; cursor: not-allowed; }
-.cfoot { width: min(720px, 100%); margin: 10px auto 0; display: flex; gap: 14px; font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.07em; color: var(--ink-3); }
+.cfoot { width: min(720px, 100%); margin: 10px auto 0; display: flex; gap: 14px; font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.07em; color: var(--ink-3); }
 
 /* ===== 右：成果面板 492px ===== */
 .app[data-output-max="on"] .sessions,
@@ -293,10 +300,10 @@
 
 /* ===== 消息 ===== */
 .msg { display: flex; flex-direction: column; gap: 8px; }
-.msg .who { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.13em; text-transform: uppercase; color: var(--ink-3); }
-.msg .who .st { width: 21px; height: 21px; border-radius: 7px; display: grid; place-items: center; font-family: var(--font-body); font-size: 9.5px; font-weight: 700; letter-spacing: 0; }
-.msg.user .st { background: var(--seal); color: var(--paper); }
-.msg.bot .st { background: var(--ink); color: var(--paper); }
+.msg .who { display: flex; align-items: center; gap: 6px; font-family: var(--font-body); font-size: 11px; color: var(--ink-3); }
+.msg .who .st { font-family: var(--font-body); font-size: 11px; font-weight: 500; color: var(--ink-3); }
+.msg.user .st { color: var(--ink-3); }
+.msg.bot .st { color: var(--ink-3); }
 .msg.user .body { background: var(--soft); border-radius: 10px 10px 2px 10px; padding: 14px 17px; font-size: 14.5px; line-height: 1.8; }
 /* 用户消息整体靠右：头像行反转（时间在左、头像贴右），气泡右对齐 */
 .msg.user { align-items: flex-end; }

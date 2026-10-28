@@ -83,6 +83,7 @@
           "pptist/**/*",
           "!skills/**/__pycache__{,/**}",
           "!skills/**/*.pyc",
+          "!skills/xinzhongshi-ppt{,/**}",
           "!skills/**/*.map",
           "!pptist/**/*.map",
           "!pptist/**/.cache{,/**}"

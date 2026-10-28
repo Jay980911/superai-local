@@ -280,15 +280,19 @@ function ImageModelBlock({ s, onToast, setS }: { s: Settings; onToast: (t: strin
   const [baseUrl, setBaseUrl] = useState(img.baseUrl);
   const [apiKey, setApiKey] = useState(img.apiKey);
   const [model, setModel] = useState(img.model);
+  const [unsplashKey, setUnsplashKey] = useState(s.unsplashKey || '');
+  const [proxy, setProxy] = useState(s.proxy || '');
   const [saved, setSaved] = useState(false);
   useEffect(() => {
     const i = s.imageModel;
     if (i) { setBaseUrl(i.baseUrl); setApiKey(i.apiKey); setModel(i.model); }
-  }, [s.imageModel]);
+    setUnsplashKey(s.unsplashKey || '');
+    setProxy(s.proxy || '');
+  }, [s.imageModel, s.unsplashKey, s.proxy]);
   const onSave = async () => {
     if (!baseUrl || !model) { onToast('baseUrl 和 model 不能为空'); return; }
-    const fresh = await saveSettings({ imageModel: { baseUrl, apiKey, model } });
-    setS(fresh); setSaved(true); onToast('已保存图像生成模型');
+    const fresh = await saveSettings({ imageModel: { baseUrl, apiKey, model }, unsplashKey, proxy });
+    setS(fresh); setSaved(true); onToast('已保存图像生成配置');
     setTimeout(() => setSaved(false), 2000);
   };
   const onTest = async () => {
@@ -309,8 +313,8 @@ function ImageModelBlock({ s, onToast, setS }: { s: Settings; onToast: (t: strin
   return (
     <div className="add-model-form" style={{ marginTop: 16 }}>
       <h4 style={{ margin: '0 0 4px' }}>图像生成模型{saved ? ' · 已保存 ✓' : (img.model ? ' · 已配置' : '')}</h4>
-      <p className="hint">用于 image-gen 技能生成背景图/插图（OpenAI 兼容 /images/generations）。本地明文存储，不进对话模型列表、不影响对话。</p>
-      <input className="input" placeholder="API 地址（OpenAI 兼容根，如 https://api.lkeap.com/v1）" value={baseUrl} onChange={(e) => { setBaseUrl(e.target.value); setSaved(false); }} />
+      <p className="hint">用于 image-gen 技能生成背景图/插图。自动探测协议：baseUrl 以 /v1 结尾走 OpenAI 标准 /images/generations；带具体模型路由（如腾讯混元 wand）走对话式生图。本地明文存储，不进对话模型列表。</p>
+      <input className="input" placeholder="API 地址（如 https://api.lkeap.com/v1 或腾讯混元完整端点）" value={baseUrl} onChange={(e) => { setBaseUrl(e.target.value); setSaved(false); }} />
       <input className="input" placeholder="模型名（如 hy-image-v3.5-preview）" value={model} onChange={(e) => { setModel(e.target.value); setSaved(false); }} />
       <input className="input" type="password" placeholder="API Key" value={apiKey} onChange={(e) => { setApiKey(e.target.value); setSaved(false); }} />
       <div className="row-actions">
@@ -319,6 +323,14 @@ function ImageModelBlock({ s, onToast, setS }: { s: Settings; onToast: (t: strin
         <button className="btn small" onClick={onClear}>清除</button>
         {isLoggedIn() && <button className="btn small" onClick={onSync}>从云端同步</button>}
       </div>
+      <details style={{ marginTop: 8 }}>
+        <summary style={{ cursor: 'pointer', color: 'var(--text-dim)', fontSize: 13 }}>图库 & 代理（可选，image-gen 级联第 2/3 层）</summary>
+        <div style={{ marginTop: 8 }}>
+          <input className="input" placeholder="Unsplash Access Key（留空=图库模式跳过）" value={unsplashKey} onChange={(e) => { setUnsplashKey(e.target.value); setSaved(false); }} />
+          <input className="input" placeholder="代理地址（如 http://127.0.0.1:7890，访问境外图库用）" value={proxy} onChange={(e) => { setProxy(e.target.value); setSaved(false); }} />
+          <p className="hint">image-gen 默认级联：大模型 → 图库(Unsplash) → 纹理。图库需 Key，境外访问需代理。两者都不配也能出片（走纹理兜底）。</p>
+        </div>
+      </details>
     </div>
   );
 }

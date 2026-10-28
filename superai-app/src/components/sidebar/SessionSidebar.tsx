@@ -1,9 +1,7 @@
 // 会话栏 268px · §6 左栏：品牌/搜索/会话分组/用户卡
 import { useState, useEffect } from 'react';
-import type { Session, SessionGroup, FileEntry } from '../../types';
+import type { Session, FileEntry } from '../../types';
 import type { CloudUser } from '../../data/cloud';
-
-const GROUP_ORDER: SessionGroup[] = ['置顶', '其他'];
 
 export default function SessionSidebar({
   activeSessionId,
@@ -38,6 +36,8 @@ export default function SessionSidebar({
   const [renameDraft, setRenameDraft] = useState('');
   const [query, setQuery] = useState('');
   const [menuId, setMenuId] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const MAX_COLLAPSED = 5;
   // 点击菜单外任意位置关闭三点菜单
   useEffect(() => {
     if (!menuId) return;
@@ -84,7 +84,6 @@ export default function SessionSidebar({
       >
         <span className="tx">
           <div className="t1">{s.title}</div>
-          <div className="t2">{s.summary}</div>
         </span>
         <button
           className="more session-menu-trigger"
@@ -161,20 +160,29 @@ export default function SessionSidebar({
             ))}
           </>
         ) : (
-          // 分组模式
-          GROUP_ORDER.map((g) => {
-            const list = sessions.filter((s) => s.group === g);
-            if (list.length === 0) return null;
-            return (
-              <div key={g}>
-                <div className="grp">
-                  <span className="up" style={{ flex: 1 }}>{g}</span>
-                  <span className="plus" title="新建">＋</span>
-                </div>
-                {list.map(renderRow)}
-              </div>
-            );
-          })
+          // 分组模式：置顶会话有标题，其他平铺；默认最多 5 条，多了折叠
+          (() => {
+            const pinned = matchedSessions.filter((s) => s.pinned || s.group === '置顶');
+            const others = matchedSessions.filter((s) => !(s.pinned || s.group === '置顶'));
+            const all = [...pinned, ...others];
+            const visible = showAll ? all : all.slice(0, MAX_COLLAPSED);
+            const hiddenCount = all.length - MAX_COLLAPSED;
+            const showPinnedHeader = pinned.length > 0 && visible.some((s) => s.pinned || s.group === '置顶');
+            return (<>
+              {showPinnedHeader && (
+                <div className="grp"><span className="up" style={{ flex: 1 }}>置顶</span></div>
+              )}
+              {visible.map(renderRow)}
+              {hiddenCount > 0 && !showAll && (
+                <button className="show-more" onClick={() => setShowAll(true)}>
+                  查看更多（{hiddenCount}）
+                </button>
+              )}
+              {showAll && all.length > MAX_COLLAPSED && (
+                <button className="show-more" onClick={() => setShowAll(false)}>收起</button>
+              )}
+            </>);
+          })()
         )}
       </div>
 

@@ -11,7 +11,7 @@ import { Check, Clock, FileTypeIcon } from '../icons/Icon';
 export function UserMessage({ msg }: { msg: Extract<Message, { role: 'user' }> }) {
   return (
     <div className="msg user">
-      <div className="who"><span className="st">你</span>{msg.time}</div>
+      <div className="who"><span className="st">你</span></div>
       <div className="body">
         {msg.text}
         {msg.attachments && msg.attachments.map((a) => (
@@ -159,7 +159,7 @@ export function AgentMessage({
   const running = msg.time.startsWith('处理中');
   return (
     <div className="msg bot">
-      <div className="who"><span className="st">S</span>SuperAI · {msg.time}</div>
+      <div className="who"><span className="st">S</span>SuperAI</div>
       <div className="body">
         {/* 1) 步骤卡在最前：脚本执行过程展示在总结之上，符合“先执行、后总结”的阅读顺序。
             原实现把 msg.text 放在最顶，导致“总结”出现在“脚本执行”之前。 */}

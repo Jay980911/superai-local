@@ -70,16 +70,22 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('models');
-  const [running, setRunning] = useState(false);
+  const [runningSids, setRunningSids] = useState<Set<string>>(new Set());
+  /** 草稿按会话缓存：切换会话时保存/恢复输入框内容 */
+  const draftCache = useRef<Map<string, string>>(new Map());
   const [workspace, setWorkspace] = useState('');
   const [fileTree, setFileTree] = useState<FileEntry[]>([]);
   const [activeFile, setActiveFile] = useState<{ name: string; path: string } | null>(null);
   const [fileContent, setFileContent] = useState('');
   const streamRef = useRef<HTMLDivElement>(null);
-  /** 当前运行的 superai 会话 id（供「停止」按钮中断） */
-  const runningSid = useRef<string>('');
   /** 本轮是否已选中可预览主产物（HTML/PPT 等）；优先展示主产物，避免被后到的 .json/.log 覆盖 */
   const preferredOpened = useRef(false);
+  /** 当前活跃会话 ref（避免 onEvent 闭包里 activeSession 过期） */
+  const activeSessionRef = useRef<Session | null>(null);
+  /** 运行中会话的消息缓存：切走再切回时恢复实时状态（后端只存最终结果） */
+  const runMsgsCache = useRef<Map<string, Message[]>>(new Map());
+  /** 按 sessionId 路由 agent 事件：每个会话的 send() 注册自己的 handler */
+  const eventHandlers = useRef<Map<string, (e: AgentEvent) => void>>(new Map());
 
   // 可拖拽栏宽
   const [leftW, setLeftW] = useState(268);
@@ -99,6 +105,21 @@ export default function App() {
     } else {
       setAuthReady(true);
     }
+  }, []);
+
+  // 同步 activeSession ref（onEvent 闭包用这个判断当前会话是否活跃）
+  useEffect(() => { activeSessionRef.current = activeSession; }, [activeSession]);
+
+  // 全局事件路由：主进程给每个事件打了 sessionId，按 sessionId 分发给对应会话的 handler。
+  // 解决切换会话后旧会话事件串到新会话 UI 的 bug。
+  useEffect(() => {
+    if (!isElectron) return;
+    const superai = (window as any).superai;
+    superai.onAgentEvent((e: AgentEvent) => {
+      const sid = e.sessionId;
+      const handler = sid ? eventHandlers.current.get(sid) : null;
+      if (handler) handler(e);
+    });
   }, []);
   const onLogoutCloud = useCallback(() => {
     cloudLogout();
@@ -180,12 +201,12 @@ export default function App() {
     if (!isElectron) return;
     try {
       const ext = (path.split('.').pop() || '').toLowerCase();
-      // 二进制/预览类格式（pptx/pdf/图片等）不需要文本内容：PptxPreview 自己读字节，
-      // 图片/PDF/HTML 走 superai-preview 协议。readFile 对 >1MB 二进制会抛“文件过大”，
-      // 这里跳过，避免大 pptx 点击即“读取文件失败”。
-      const binaryPreview = ['pptx', 'ppt', 'docx', 'doc', 'xlsx', 'xls', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif'];
+      // 二进制/预览类格式（pptx/pdf/图片/HTML 等）不需要文本内容：PptxPreview 自己读字节，
+      // 图片/PDF/HTML 走 superai-preview 协议。readFile 对 >1MB 文件会抛“文件过大”，
+      // 这里跳过，避免大 HTML/pptx 点击即“读取文件失败”。
+      const skipRead = ['pptx','ppt','docx','doc','xlsx','xls','pdf','png','jpg','jpeg','gif','webp','bmp','avif','html','htm','svg'];
       let content = '';
-      if (!binaryPreview.includes(ext)) {
+      if (!skipRead.includes(ext)) {
         content = await readFile(path, workspace);
       }
       setActiveFile({ name: path.split(/[\\/]/).pop() || path, path });
@@ -300,8 +321,15 @@ export default function App() {
     setActiveSession(s);
     setPane('tree');
     setMode('main');
-    // 加载该会话的消息历史 + 工作目录
     if (isElectron) {
+      // 切到正在运行的会话：从缓存恢复实时状态（后端只存最终结果，运行中消息还没落盘）
+      if (runningSids.has(s.id) && runMsgsCache.current.has(s.id)) {
+        setMsgs(runMsgsCache.current.get(s.id)!);
+        const ws = s.workspace || '';
+        setWorkspace(ws);
+        if (ws) loadFileTree(ws);
+        return;
+      }
       const full = await getSession(s.id);
       if (full) {
         setMsgs(full.messages || []);
@@ -317,9 +345,11 @@ export default function App() {
         setMode('empty');
       }
     }
-  }, [loadFileTree]);
+  }, [loadFileTree, activeSession, draft, runningSids]);
 
   const newChat = useCallback(async () => {
+    // 保存当前会话草稿
+    if (activeSession) draftCache.current.set(activeSession.id, draft);
     let sid = '';
     let ws = workspace;
     if (isElectron) {
@@ -341,7 +371,7 @@ export default function App() {
     setDraft('');
     setMsgs([]);
     refreshSessions();
-  }, [workspace, refreshSessions, loadFileTree]);
+  }, [workspace, refreshSessions, loadFileTree, activeSession, draft]);
 
   const onDeleteSession = useCallback(async (id: string) => {
     if (!isElectron) return;
@@ -379,17 +409,35 @@ export default function App() {
   }, []);
 
   // 更新最后一条 agent 消息
-  const updateLastAgent = useCallback((fn: (m: Extract<Message, { role: 'agent' }>) => Extract<Message, { role: 'agent' }>) => {
-    setMsgs((prev) => {
-      const idx = [...prev].reverse().findIndex((m) => m.role === 'agent');
-      if (idx === -1) return prev;
-      const realIdx = prev.length - 1 - idx;
-      const target = prev[realIdx];
-      if (target.role !== 'agent') return prev;
-      const next = [...prev];
-      next[realIdx] = fn(target);
-      return next;
-    });
+  const updateLastAgent = useCallback((fn: (m: Extract<Message, { role: 'agent' }>) => Extract<Message, { role: 'agent' }>, eventSid?: string) => {
+    const sid = eventSid;
+    // 更新运行中会话的消息缓存（始终更新，保证切回时状态最新）
+    if (sid && runMsgsCache.current.has(sid)) {
+      const cached = runMsgsCache.current.get(sid)!;
+      const idx = [...cached].reverse().findIndex((m) => m.role === 'agent');
+      if (idx !== -1) {
+        const realIdx = cached.length - 1 - idx;
+        const target = cached[realIdx];
+        if (target.role === 'agent') {
+          const next = [...cached];
+          next[realIdx] = fn(target);
+          runMsgsCache.current.set(sid, next);
+        }
+      }
+    }
+    // 更新 UI（仅当运行中会话是当前活跃会话时）
+    if (sid === activeSessionRef.current?.id) {
+      setMsgs((prev) => {
+        const idx = [...prev].reverse().findIndex((m) => m.role === 'agent');
+        if (idx === -1) return prev;
+        const realIdx = prev.length - 1 - idx;
+        const target = prev[realIdx];
+        if (target.role !== 'agent') return prev;
+        const next = [...prev];
+        next[realIdx] = fn(target);
+        return next;
+      });
+    }
   }, []);
 
   /** 把仍在 running 的步骤标记为 done（取消/收尾时用） */
@@ -399,29 +447,38 @@ export default function App() {
 
   // 「停止」按钮：强杀当前会话的 dsh runtime（协议无 wire 级 cancel）
   const onCancelRun = useCallback(async () => {
-    const sid = runningSid.current;
-    if (!sid) return;
+    const sid = activeSession?.id || '';
+    if (!sid || !runningSids.has(sid)) return;
     const r = await cancelAgent(sid);
     if (!r.ok) showToast(r.error || '没有正在运行的任务');
-  }, [showToast]);
+  }, [activeSession, runningSids, showToast]);
 
   // 插话：运行中发送，注入当前回合引导 AI（不打断）。
   // 消息立即上屏 + 存盘；dsh 侧走 followup → inbox，步骤间隙被拾取。
   const onSteer = useCallback(async () => {
     const txt = draft.trim();
-    if (!txt || !running) return;
-    const sid = runningSid.current;
+    if (!txt || !runningSids.has(activeSession?.id || '')) return;
+    const sid = activeSession?.id || '';
     setDraft('');
     const userMsg: Message = { id: nid(), role: 'user', time: '刚刚', text: txt, createdAt: Date.now() };
     setMsgs((prev) => [...prev, userMsg]);
+    // 同步更新运行中会话的消息缓存（steer 的用户消息也要进缓存）
+    if (sid && runMsgsCache.current.has(sid)) {
+      const cached = runMsgsCache.current.get(sid)!;
+      runMsgsCache.current.set(sid, [...cached, userMsg]);
+    }
     if (sid) appendSessionMessage(sid, userMsg);
     const r = await steerAgent(sid || '', txt);
     if (!r.ok) {
       showToast(r.error || '插话失败');
       // 插话未送达时撤回本地乐观消息，避免历史与 UI 不一致。
       setMsgs((prev) => prev.filter((m) => m.id !== userMsg.id));
+      if (sid && runMsgsCache.current.has(sid)) {
+        const cached = runMsgsCache.current.get(sid)!;
+        runMsgsCache.current.set(sid, cached.filter((m) => m.id !== userMsg.id));
+      }
     } else showToast('已插入，AI 会在当前步骤间隙读取');
-  }, [draft, running, showToast]);
+  }, [draft, runningSids, activeSession, showToast]);
 
   // 附件：选择 / 拖入（按 path 去重）
   // 上传文件复制一份进工作目录（成为工作区一等文件：文件树可见、agent 可读写），
@@ -494,10 +551,10 @@ export default function App() {
 
   const send = useCallback(async () => {
     const txt = draft.trim();
-    if (!txt || running) return;
+    if (!txt || runningSids.has(activeSession?.id || '')) return;
     setDraft('');
     setMode('main');
-    setRunning(true);
+    setRunningSids((prev) => new Set(prev).add(sid));
 
     // 确保有活动会话（空态 / 临时会话发送时自动创建真实会话）
     let sid = activeSession?.id || '';
@@ -510,7 +567,6 @@ export default function App() {
       setActiveSession({ id: sid, title: '新对话', summary: '0 条消息', time: '刚刚', group: '其他', workspace: ws });
       refreshSessions();
     }
-    runningSid.current = sid;
     preferredOpened.current = false;   // 新一轮：重置“主产物已选中”标记
 
     // 附件 → 注入块 + 用户消息展示元信息（读取失败不阻断发送）
@@ -531,6 +587,8 @@ export default function App() {
     // waiting_model → thinking → finalizing，前端不再用固定定时器猜测。
     const agentMsg: Message = { id: nid(), role: 'agent', time: '处理中', text: '', phase: 'preparing', createdAt: Date.now() };
     setMsgs((prev) => [...prev, userMsg, agentMsg]);
+    // 缓存运行中会话的消息：切走再切回时恢复实时状态（后端只存最终结果）
+    runMsgsCache.current.set(sid, [...msgs, userMsg, agentMsg]);
 
     // 实时计时器：无工具调用时头部走秒（唯一耗时显示）；有步骤后耗时归步骤卡，
     // 头部只保留「处理中」，避免同一时刻出现两个耗时数字。
@@ -539,7 +597,7 @@ export default function App() {
         ...m,
         time: m.steps && m.steps.length > 0 ? '处理中' : `处理中 ${fmtElapsed()}s`,
         elapsed: fmtElapsed(),
-      }));
+      }), sid);
     }, 500);
 
     // 存盘：用户消息（附件只进本次发送，不持久化内容）
@@ -568,20 +626,23 @@ export default function App() {
     const onEvent = (e: AgentEvent) => {
       _evtChain = _evtChain.then(() => processEvent(e)).catch(() => { /* 单条事件异常不阻塞后续 */ });
     };
+    // 注册到全局路由器：主进程按 sessionId 分发事件到此处
+    eventHandlers.current.set(sid, onEvent);
+    const isActive = () => sid === activeSessionRef.current?.id;
     const processEvent = async (e: AgentEvent) => {
       if (e.type === 'text') {
         // 全量快照：直接替换（拼接会把多个快照变成重复文本）
         agentFinal = { ...agentFinal, text: e.text, phase: 'thinking' };
-        updateLastAgent((m) => ({ ...m, text: e.text, phase: 'thinking' }));
+        updateLastAgent((m) => ({ ...m, text: e.text, phase: 'thinking' }), sid);
       } else if (e.type === 'phase') {
         // 主进程按 dsh 真实事件推送的阶段：preparing/waiting/thinking/finalizing
         agentFinal = { ...agentFinal, phase: e.phase };
-        updateLastAgent((m) => ({ ...m, phase: e.phase }));
+        updateLastAgent((m) => ({ ...m, phase: e.phase }), sid);
         // 进入「正在整理结果」= 工具已全部跑完、模型在生成最终答复：
         // 把仍显示 running 的步骤卡收尾为 done（dsh 经常不发 tool/result，否则会一直转圈）
         if (e.phase === 'finalizing') {
           agentFinal = { ...agentFinal, steps: markStepsSettled(agentFinal) };
-          updateLastAgent((m) => ({ ...m, steps: markStepsSettled(m) }));
+          updateLastAgent((m) => ({ ...m, steps: markStepsSettled(m) }), sid);
         }
       } else if (e.type === 'step') {
         // 按 index 匹配（label 带参数摘要，call/result 两阶段文案不同，不能按 label 匹配）
@@ -596,7 +657,7 @@ export default function App() {
           return ns;
         };
         agentFinal = { ...agentFinal, steps: applySteps(agentFinal.steps || []), phase: 'thinking' };
-        updateLastAgent((m) => ({ ...m, steps: applySteps(m.steps || []), phase: 'thinking' }));
+        updateLastAgent((m) => ({ ...m, steps: applySteps(m.steps || []), phase: 'thinking' }), sid);
       } else if (e.type === 'file') {
         showToast(`已${e.action}: ${e.name}`);
         // present_files：把本轮产出/修改的文件累积到当前 agent 消息的 produced 卡
@@ -609,12 +670,13 @@ export default function App() {
           const entry = { name: e.name, path: e.path, kind, action: e.action };
           if (idx >= 0) arr[idx] = entry; else arr.push(entry);
           return { ...m, produced: arr };
-        });
+        }, sid);
         // 文件生成后刷新文件树（用本次运行的实际目录 ws，不用闭包里的 workspace state——
         // 空态首轮时 createSession 刚建目录，state 还没更新）
         // 先让右栏进入可见状态，再刷新目录树和读取内容；否则侧栏处于 off 时，
         // CSS 仍会把它移出布局，用户会感觉“没有自动展开”。
-        setRightSide('on');
+        // ⚠ 右栏操作仅在当前会话活跃时执行（切走后不抢 UI）
+        if (isActive()) setRightSide('on');
         const fileExt = (e.name.split('.').pop() || '').toLowerCase();
         // 区分主产物与次级素材：
         //   主产物  = html/htm/svg/md/markdown/pdf/pptx/ppt/docx/doc/xlsx/xls —— 成果交付物
@@ -634,32 +696,56 @@ export default function App() {
           // 先同步置锁再 await：防止 await 期间交错的图片事件抢右栏。
           // （事件已串行化，但保险起见仍先置锁，语义清晰）
           preferredOpened.current = true;
-          setPane('preview');
-          await loadFileTree(ws);
-          await onOpenFile(e.path);
+          if (isActive()) { setPane('preview'); await loadFileTree(ws); await onOpenFile(e.path); }
         } else if (isImage && !preferredOpened.current) {
-          setPane('preview');
-          await loadFileTree(ws);
-          await onOpenFile(e.path);            // 主产物未到时图片兑底；主产物一到即覆盖
+          if (isActive()) { setPane('preview'); await loadFileTree(ws); await onOpenFile(e.path); }            // 主产物未到时图片兑底；主产物一到即覆盖
         } else if (!isPrimary && !isImage && !preferredOpened.current) {
-          setPane('code');
-          await loadFileTree(ws);
-          await onOpenFile(e.path);            // 非可预览仅在尚未锁定时按源码打开
+          if (isActive()) { setPane('code'); await loadFileTree(ws); await onOpenFile(e.path); }            // 非可预览仅在尚未锁定时按源码打开
+        }
+      } else if (e.type === 'artifacts') {
+        // dsh 有时不会为脚本直接落盘的 PPTX 发 file 事件；回合结束扫描到的成果
+        // 通过 artifacts 事件补报。将主产物纳入 produced，并在前端统一按优先级打开。
+        const PRIMARY = ['html', 'htm', 'svg', 'md', 'markdown', 'pdf', 'pptx', 'ppt', 'docx', 'doc', 'xlsx', 'xls'];
+        const IMAGE = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif'];
+        const candidates = e.files || [];
+        updateLastAgent((m) => {
+          const arr = m.produced ? [...m.produced] : [];
+          for (const f of candidates) {
+            const ext = (f.name.split('.').pop() || '').toLowerCase();
+            const kind = ['html','htm','svg'].includes(ext) ? 'html' : ['md','markdown'].includes(ext) ? 'md' : ['pptx','ppt'].includes(ext) ? 'pptx' : ext === 'pdf' ? 'pdf' : IMAGE.includes(ext) ? 'img' : ext === 'json' ? 'json' : 'file';
+            const idx = arr.findIndex(x => x.name === f.name);
+            const entry = { name: f.name, path: f.path, kind, action: f.action };
+            if (idx >= 0) arr[idx] = entry; else arr.push(entry);
+          }
+          return { ...m, produced: arr };
+        }, sid);
+        const preferred = candidates
+          .slice()
+          .sort((a, b) => {
+            const ae = (a.name.split('.').pop() || '').toLowerCase();
+            const be = (b.name.split('.').pop() || '').toLowerCase();
+            const ai = PRIMARY.indexOf(ae); const bi = PRIMARY.indexOf(be);
+            return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi);
+          })
+          .find((f) => PRIMARY.includes((f.name.split('.').pop() || '').toLowerCase()));
+        if (preferred) {
+          preferredOpened.current = true;
+          if (isActive()) { setRightSide('on'); setPane('preview'); await loadFileTree(ws); await onOpenFile(preferred.path); }
         }
       } else if (e.type === 'done') {
         agentFinal = { ...agentFinal, time: '刚刚', elapsed: fmtElapsed(), phase: undefined };
-        updateLastAgent((m) => ({ ...m, time: '刚刚', elapsed: fmtElapsed(), phase: undefined }));
+        updateLastAgent((m) => ({ ...m, time: '刚刚', elapsed: fmtElapsed(), phase: undefined }), sid);
       } else if (e.type === 'cancelled') {
         // 用户点了「停止」：保留已有文本，running 步骤标记为完成
         showToast('已停止');
         agentFinal = { ...agentFinal, time: '刚刚', elapsed: fmtElapsed(), steps: markStepsSettled(agentFinal), phase: undefined };
-        updateLastAgent((m) => ({ ...m, time: '刚刚', elapsed: fmtElapsed(), steps: markStepsSettled(m), phase: undefined }));
+        updateLastAgent((m) => ({ ...m, time: '刚刚', elapsed: fmtElapsed(), steps: markStepsSettled(m), phase: undefined }), sid);
       } else if (e.type === 'error') {
         showToast(e.message);
         agentFinal = { ...agentFinal, text: (agentFinal.text || '') + `\n\n⚠ ${e.message}`, time: '刚刚', elapsed: fmtElapsed(), steps: markStepsSettled(agentFinal) };
-        updateLastAgent((m) => ({ ...m, text: (m.text || '') + `\n\n⚠ ${e.message}`, time: '刚刚', elapsed: fmtElapsed(), steps: markStepsSettled(m) }));
+        updateLastAgent((m) => ({ ...m, text: (m.text || '') + `\n\n⚠ ${e.message}`, time: '刚刚', elapsed: fmtElapsed(), steps: markStepsSettled(m) }), sid);
       }
-      requestAnimationFrame(() => {
+      if (isActive()) requestAnimationFrame(() => {
         streamRef.current?.scrollTo({ top: streamRef.current.scrollHeight });
       });
     };
@@ -671,7 +757,6 @@ export default function App() {
       // 可能还在处理最后几条 file/done（含 loadFileTree/onOpenFile 的 await）。
       // 不等的话存盘会漏掉最后这批事件的影响（如最终产物的 produced 卡）。
       await _evtChain;
-      runningSid.current = '';
       // 兑底收尾：done 事件经 webContents.send（通知通道）与 agent:run 的 invoke 响应
       // （handle 响应通道）走不同 IPC 通道，不保证 done 一定先于 invoke 响应到达。
       // 若 done 迟到，agentFinal 会停留在 '处理中'/'finalizing' 就被 appendSessionMessage
@@ -679,26 +764,30 @@ export default function App() {
       // 存盘前无条件收尾，不再依赖 done 事件的到达时序。与 done/cancelled 事件里的
       // 同样操作幂等，重复执行无副作用。
       agentFinal = { ...agentFinal, time: '刚刚', elapsed: fmtElapsed(), phase: undefined, steps: markStepsSettled(agentFinal) };
-      updateLastAgent((m) => ({ ...m, time: '刚刚', elapsed: fmtElapsed(), phase: undefined, steps: markStepsSettled(m) }));
+      updateLastAgent((m) => ({ ...m, time: '刚刚', elapsed: fmtElapsed(), phase: undefined, steps: markStepsSettled(m) }), sid);
       // '已停止' = 用户主动取消（cancelled 事件已提示），不当错误重复弹Toast
       if (result.error && result.error !== '已停止') {
         showToast(result.error);
         agentFinal = { ...agentFinal, text: (agentFinal.text || '') + `\n\n⚠ ${result.error}` };
-        updateLastAgent((m) => ({ ...m, text: (m.text || '') + `\n\n⚠ ${result.error}` }));
+        updateLastAgent((m) => ({ ...m, text: (m.text || '') + `\n\n⚠ ${result.error}` }), sid);
       }
       // 存盘：最终 agent 消息
       if (sid) appendSessionMessage(sid, agentFinal);
       refreshSessions();
     } finally {
       clearInterval(timer);
-      setRunning(false);
+      eventHandlers.current.delete(sid);
+      runMsgsCache.current.delete(sid);
+      setRunningSids((prev) => { const n = new Set(prev); n.delete(sid); return n; });
     }
-  }, [draft, running, activeSession, workspace, msgs, attachments, showToast, updateLastAgent, markStepsSettled, refreshSessions, loadFileTree, buildAttachmentBlock, onOpenFile]);
+  }, [draft, runningSids, activeSession, workspace, msgs, attachments, showToast, updateLastAgent, markStepsSettled, refreshSessions, loadFileTree, buildAttachmentBlock, onOpenFile]);
+
+  const isRunningHere = !!activeSession && runningSids.has(activeSession.id);
 
   const chatMeta =
     mode === 'empty'
       ? '开始一段新对话'
-      : running
+      : isRunningHere
       ? '正在处理…'
       : `${msgs.length} 条消息${autoExec ? ' · 自动执行已开启' : ''}`;
 
@@ -719,7 +808,7 @@ export default function App() {
 
       <main className="workspace">
         <SessionSidebar
-          activeSessionId={mode === 'empty' || !activeSession ? '' : activeSession.id}
+          activeSessionId={activeSession ? activeSession.id : ''}
           sessions={sessions}
           onPickSession={pickSession}
           onNewChat={newChat}
@@ -762,7 +851,7 @@ export default function App() {
             onSend={send}
             onSteer={onSteer}
             onCancel={onCancelRun}
-            running={running}
+            running={isRunningHere}
             autoExec={autoExec}
             onToggleAuto={onToggleAuto}
             workspace={workspace}

@@ -40,6 +40,9 @@ function defaults() {
                           // 空 = 用安装目录/workspace。每个会话可再单独覆盖。
     imageModel: null,     // 图像生成模型配置（独立于对话模型，本地明文存，不进 dsh provider patch）
                           // { baseUrl, apiKey, model }，供 scripts/image-gen.mjs 使用
+    unsplashKey: '',      // Unsplash 图库 API Access Key（可选，留空则 image-gen 图库模式跳过）
+    proxy: '',            // HTTP/HTTPS 代理地址（可选，如 http://127.0.0.1:7890），供 image-gen 访问境外图库
+                          // 仅注入为子进程 HTTPS_PROXY，不影响大模型（境内的不走代理）
   };
 }
 
@@ -87,6 +90,8 @@ function migrate(s) {
   if (typeof s.scanGlobalSkills !== 'boolean') s.scanGlobalSkills = false;
   // imageModel：图像生成模型配置（独立于对话模型，本地明文存，不进 dsh provider patch）
   if (!s.imageModel || typeof s.imageModel !== 'object') s.imageModel = null;
+  if (typeof s.unsplashKey !== 'string') s.unsplashKey = '';
+  if (typeof s.proxy !== 'string') s.proxy = '';
   s.models = s.models.map((m) => {
     const next = { ...m };
     if (next.apiType && !next.api) {

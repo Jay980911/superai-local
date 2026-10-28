@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""xinzhongshi-ppt · 新中式排版引擎（独立，仅依赖 python-pptx）
+"""xiaozhou-ppt · 多风格 PPT 排版引擎（独立，仅依赖 python-pptx）
 
 用法（库模式）:
     from build_deck import Deck, PALETTE
@@ -15,6 +15,7 @@
 色号/字体/间距为 golden-sample 锁定值，勿随意改。
 """
 from pathlib import Path
+import argparse
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
@@ -22,21 +23,16 @@ from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.oxml.ns import qn
 from lxml import etree
+try:
+    from styles import get_style
+except ImportError:
+    from .styles import get_style
 
-# ---- 锁定色板（golden sample）----
-INK   = RGBColor(0x1A, 0x14, 0x0E)
-CREAM = RGBColor(0xF3, 0xEC, 0xDC)
-SAND  = RGBColor(0xD2, 0xB4, 0x88)
-GOLD  = RGBColor(0xB0, 0x8D, 0x57)
-MUTED = RGBColor(0x9A, 0x82, 0x5E)
-SEAL  = RGBColor(0xA6, 0x3A, 0x2A)
-WHITE = RGBColor(0xF8, 0xF3, 0xE7)
-
-# ---- 锁定字体 ----
-F_HANG = "STXingkai"        # 华文行楷
-F_KAI  = "KaiTi"
-F_SONG = "SimSun"
-F_EN   = "Times New Roman"
+# 默认风格兼容别名；新代码请通过 Deck(style=...) 取参数。
+_DEFAULT = get_style("xinzhongshi")
+INK, CREAM, SAND = _DEFAULT.ink, _DEFAULT.cream, _DEFAULT.sand
+GOLD, MUTED, SEAL, WHITE = _DEFAULT.gold, _DEFAULT.muted, _DEFAULT.seal, _DEFAULT.white
+F_HANG, F_KAI, F_SONG, F_EN = _DEFAULT.title_font, _DEFAULT.body_font, _DEFAULT.secondary_font, _DEFAULT.english_font
 
 
 def set_cjk(run, name):
@@ -58,7 +54,8 @@ def style_run(run, size, color, font=F_KAI, bold=False, italic=False):
 
 
 class Deck:
-    def __init__(self, width_in=13.333, height_in=7.5):
+    def __init__(self, width_in=13.333, height_in=7.5, style="xinzhongshi"):
+        self.style = get_style(style)
         self.prs = Presentation()
         self.prs.slide_width = Inches(width_in)
         self.prs.slide_height = Inches(height_in)
@@ -69,9 +66,11 @@ class Deck:
     def _slide(self):
         return self.prs.slides.add_slide(self.blank)
 
-    def add_text(self, s, x, y, w, h, text, size, color, font=F_KAI,
+    def add_text(self, s, x, y, w, h, text, size, color=None, font=None,
                  bold=False, align=PP_ALIGN.LEFT, anchor=MSO_ANCHOR.TOP,
                  line_spacing=None, italic=False):
+        color = color or self.style.cream
+        font = font or self.style.body_font
         box = s.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
         tf = box.text_frame
         tf.word_wrap = True
@@ -90,7 +89,8 @@ class Deck:
             style_run(run, size, color, font, bold, italic)
         return box
 
-    def add_bg(self, s, path, darken=0.32):
+    def add_bg(self, s, path, darken=None):
+        darken = self.style.darken if darken is None else darken
         """全幅背景 + 半透明墨色遮罩。path 允许为 None（纯深色底）。"""
         if path:
             self._bgs.append(str(path))
@@ -172,14 +172,14 @@ class Deck:
         s = self._slide()
         self.add_bg(s, bg, darken=0.30)
         self.add_text(s, 0.85, 0.75, 3, 0.35, tag, 11, MUTED, F_SONG)
-        self.add_text(s, 1.0, 2.55, 9.8, 1.7, title, 78, CREAM, F_HANG,
+        self.add_text(s, 1.0, 2.55, 9.8, 1.7, title, self.style.title_size, self.style.cream, self.style.title_font,
                       bold=True, align=PP_ALIGN.CENTER)
         if seal:
             self.seal_stamp(s, 8.55, 2.72, 0.68, seal)
-        self.add_text(s, 1.0, 4.35, 9.8, 0.4, en, 13, SAND, F_EN,
+        self.add_text(s, 1.0, 4.35, 9.8, 0.4, en, 13, self.style.sand, self.style.english_font,
                       italic=True, align=PP_ALIGN.CENTER)
         self.hairline(s, 4.7, 4.95, 3.2)
-        self.add_text(s, 1.0, 5.25, 9.8, 0.5, subtitle, 18, CREAM, F_SONG,
+        self.add_text(s, 1.0, 5.25, 9.8, 0.5, subtitle, 18, self.style.cream, self.style.secondary_font,
                       align=PP_ALIGN.CENTER)
         if foot:
             self.add_text(s, 1.0, 6.55, 9.8, 0.35, foot, 12, MUTED, F_KAI,
@@ -237,14 +237,14 @@ class Deck:
         return s
 
     def content(self, claim, body, bg, seal=None, tag=None,
-                claim_size=48, foot_title="ENCOUNTER  NATURE",
+                claim_size=None, foot_title="ENCOUNTER  NATURE",
                 foot_cn="见山之境 · 归然之居"):
         s = self._slide()
         self.add_bg(s, bg, darken=0.38)
         if tag:
             self.add_text(s, 0.9, 0.75, 5, 0.4, tag, 14, SAND, F_SONG)
             self.hairline(s, 0.95, 1.35, 1.3)
-        self.add_text(s, 0.9, 1.85, 7.2, 1.5, claim, claim_size, CREAM, F_HANG,
+        self.add_text(s, 0.9, 1.85, 7.2, 1.5, claim, claim_size or self.style.content_title_size, self.style.cream, self.style.title_font,
                       bold=True, line_spacing=1.25)
         if body:
             self.add_text(s, 0.95, 4.35, 6.4, 1.2, body, 15, SAND, F_SONG,
@@ -275,14 +275,20 @@ class Deck:
                           align=PP_ALIGN.CENTER)
         return s
 
-    def keys(self, points, title="新中式高级感的五个核心"):
-        """要点页：米白底 + 卡片。points: [(key, short, desc), ...] ≤6"""
+    def keys(self, points, title="新中式高级感的五个核心", bg=None):
+        """要点页：背景图(压暗) + 卡片。points: [(key, short, desc), ...] ≤6
+        bg 传背景图路径；不传则回退纯色米白底。"""
         s = self._slide()
-        self.fill_bg(s, CREAM)
-        self.add_text(s, 0.9, 0.65, 10, 0.55, title, 28, RGBColor(0x5C, 0x46, 0x32),
+        if bg:
+            self.add_bg(s, bg, darken=0.5)
+        else:
+            self.fill_bg(s, CREAM)
+        title_color = self.style.cream if bg else RGBColor(0x5C, 0x46, 0x32)
+        sub_color = SAND if bg else MUTED
+        self.add_text(s, 0.9, 0.65, 10, 0.55, title, 28, title_color,
                       F_HANG, bold=True)
         self.add_text(s, 0.95, 1.25, 8, 0.3,
-                      "FIVE  KEYS  OF  REFINED  CHINESE  STYLE", 10, MUTED, F_EN)
+                      "FIVE  KEYS  OF  REFINED  CHINESE  STYLE", 10, sub_color, F_EN)
         self.hairline(s, 0.95, 1.7, 1.5)
         for i, (k, t, d) in enumerate(points[:6]):
             col, row = i % 3, i // 3
@@ -290,8 +296,8 @@ class Deck:
             sh = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,
                                     Inches(x), Inches(y), Inches(3.55), Inches(1.85))
             sh.fill.solid()
-            sh.fill.fore_color.rgb = RGBColor(0xE6, 0xDD, 0xCA)
-            sh.line.color.rgb = RGBColor(0xD4, 0xC6, 0xAC)
+            sh.fill.fore_color.rgb = self.style.card_fill
+            sh.line.color.rgb = self.style.card_line
             sh.line.width = Pt(0.75)
             sh.shadow.inherit = False
             self.add_text(s, x + 0.25, y + 0.18, 1.2, 0.35, f"0{i+1}", 11, GOLD, F_EN)
@@ -346,3 +352,23 @@ class Deck:
                 raise SystemExit("铁律违反：出现重复背景图，每页必须不同")
         self.prs.save(str(path))
         return path
+
+
+def _cli():
+    parser = argparse.ArgumentParser(description="xiaozhou-ppt multi-style deck engine")
+    parser.add_argument("--style", choices=["xinzhongshi", "modern", "business"], default="xinzhongshi")
+    parser.add_argument("--out", default="xiaozhou-ppt-demo.pptx")
+    args = parser.parse_args()
+    deck = Deck(style=args.style)
+    deck.cover(bg=None, title="小舟 · 方案提案", subtitle=f"{args.style} style demo", seal="小舟")
+    deck.toc(["项目概述", "核心策略", "实施路径"])
+    deck.section("壹", "项目概述", "以清晰主张，抵达共同目标", bg=None)
+    deck.content("让内容更有秩序", "通过主题、层级与留白建立统一的阅读路径。", bg=None, tag="PROJECT OVERVIEW")
+    deck.keys([("结构", "清楚", "每页只保留一个核心主张"), ("节奏", "从容", "深浅页面交替推进"), ("表达", "准确", "标题与正文层级分明")])
+    deck.closing(bg=None, title="小舟 · 方案提案")
+    deck.save(args.out)
+    print(f"saved: {args.out} style={args.style}")
+
+
+if __name__ == "__main__":
+    _cli()

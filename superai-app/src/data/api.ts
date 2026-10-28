@@ -48,16 +48,21 @@ export interface Settings {
   /** 全局默认工作目录覆盖（用户在无活动会话时选的目录）；空 = 安装目录/workspace */
   workspace?: string;
   imageModel?: { baseUrl: string; apiKey: string; model: string } | null;
+  /** Unsplash 图库 API Access Key（可选，image-gen 图库模式需要） */
+  unsplashKey?: string;
+  /** HTTP/HTTPS 代理地址（可选，如 http://127.0.0.1:7890），image-gen 访问境外图库用 */
+  proxy?: string;
 }
 
 export type AgentEvent =
-  | { type: 'text'; text: string }   // 全量快照（dsh 快照语义，前端替换而非拼接）
+  | ({ type: 'text'; text: string }   // 全量快照（dsh 快照语义，前端替换而非拼接）
   | { type: 'step'; status: 'running' | 'done' | 'error'; label: string; index: number; duration?: string; error?: string; result?: string }
   | { type: 'file'; name: string; path: string; action: string }
+  | { type: 'artifacts'; files: Array<{ name: string; path: string; action: string }> }
   | { type: 'phase'; phase: 'preparing' | 'waiting' | 'thinking' | 'finalizing' } // 真实阶段（由 dsh 事件驱动）
   | { type: 'done'; text: string; steps: number }
   | { type: 'cancelled' }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }) & { sessionId?: string };
 
 // ===== 长期记忆 =====
 export interface MemoryFact {
@@ -199,7 +204,7 @@ export async function runAgent(
 ): Promise<{ error?: string }> {
   if (isElectron) {
     const superai = (window as any).superai;
-    superai.onAgentEvent(onEvent);
+    // onAgentEvent 已由 App.tsx 全局路由器接管（按 sessionId 分发），此处不再注册
     try {
       return await superai.runAgent(input, history, workspace, sessionId);
     } catch (e: any) {

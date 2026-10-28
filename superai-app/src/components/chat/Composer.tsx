@@ -82,6 +82,7 @@ export default function Composer({
           <textarea
             placeholder={running ? '运行中·可插话引导任务，或点 ■ 停止…' : '说说你想做什么… 也可以直接拖文件进来'}
             value={value}
+            spellCheck={false}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {

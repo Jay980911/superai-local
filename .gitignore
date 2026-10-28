@@ -8,6 +8,12 @@ Thumbs.db
 superai-app/node_modules/
 superai-app/dist/
 *.tsbuildinfo
-data/
+# data/ 大部分是运行时生成（sessions/memory/dsh-home/pptx-cache 等），不入 git；
+# 但 skills/（技能定义）和 pptist/dist/（随包分发的编辑器）是源资产，要跟踪
+data/*
+!data/skills/
+!data/pptist/
+data/pptist/*
+!data/pptist/dist/
 
 build/

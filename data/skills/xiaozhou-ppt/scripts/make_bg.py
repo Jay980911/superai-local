@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
-"""xinzhongshi-ppt · 背景图准备（独立，仅依赖 Pillow）
+"""xiaozhou-ppt · 背景图准备（独立，仅依赖 Pillow）
 
 优先级（SKILL.md 铁律）:
   1. 用户实拍图     —— make_bg.py --photos a.jpg b.jpg --out dir/
   2. 程序化肌理     —— make_bg.py --theme dunes --out dir/ --count 5
   3. 外部生图模型   —— 见 prompts/backgrounds.md（本脚本不依赖）
 
-程序化主题：paper / ink-mountain / ink-wash / dunes / mist / bamboo / bronze
+程序化主题：paper / ink-mountain / ink-wash / dunes / mist / bamboo / bronze / grid / arcs / lattice / seal
 输出 1600x900 PNG，且每次生成自动带随机种子变化，保证同主题也不重复。
+其中 grid / arcs / lattice / seal 是低对比度简约图案纹理，适合封面或正文叠加文字。
 """
 import argparse
 import math
@@ -166,6 +167,78 @@ def theme_bronze(rng):
     return im
 
 
+def _pattern_base(light=False):
+    if light:
+        return _soft_grad((W, H), PAL["cream"], _lerp(PAL["cream"], PAL["sand"], 0.28))
+    return _soft_grad((W, H), _lerp(PAL["ink"], PAL["muted"], 0.20), PAL["deep"])
+
+
+def _pattern_finish(im, blur=0.35, grain=5):
+    if blur:
+        im = im.filter(ImageFilter.GaussianBlur(blur))
+    im = _grain(im, grain)
+    return ImageEnhance.Color(im).enhance(0.72)
+
+
+def theme_grid(rng):
+    """细线网格：极低对比度，适合承载封面标题。"""
+    im = _pattern_base(light=False)
+    d = ImageDraw.Draw(im, "RGBA")
+    step = rng.choice([96, 112, 128])
+    line = (*PAL["sand"], 26)
+    for x in range(-H, W + H, step):
+        d.line((x, 0, x + H, H), fill=line, width=2)
+        d.line((x, H, x + H, 0), fill=(*PAL["gold"], 18), width=2)
+    for y in range(0, H, step):
+        d.line((0, y, W, y), fill=(*PAL["muted"], 18), width=1)
+    return _pattern_finish(im, 0.25, 4)
+
+
+def theme_arcs(rng):
+    """偏心同心弧线：给封面提供一个安静的视觉焦点。"""
+    im = _pattern_base(light=False)
+    d = ImageDraw.Draw(im, "RGBA")
+    cx = rng.choice([int(W * 0.18), int(W * 0.78)])
+    cy = rng.choice([int(H * 0.18), int(H * 0.82)])
+    max_r = max(W, H) * 1.05
+    for i in range(9):
+        r = int(max_r * (0.18 + i * 0.095))
+        d.ellipse((cx-r, cy-r, cx+r, cy+r), outline=(*PAL["gold"], 20 + (i % 3) * 5), width=3)
+    d.ellipse((cx-28, cy-28, cx+28, cy+28), outline=(*PAL["sand"], 48), width=3)
+    return _pattern_finish(im, 0.4, 4)
+
+
+def theme_lattice(rng):
+    """东方窗棂式菱格：规则、克制，不模拟具体图像。"""
+    im = _pattern_base(light=True)
+    d = ImageDraw.Draw(im, "RGBA")
+    step = rng.choice([108, 126, 144])
+    for x in range(-H, W + H, step):
+        d.line((x, 0, x + H, H), fill=(*PAL["muted"], 24), width=2)
+        d.line((x, H, x + H, 0), fill=(*PAL["gold"], 20), width=2)
+    for x in range(0, W, step * 2):
+        for y in range(0, H, step * 2):
+            d.ellipse((x-9, y-9, x+9, y+9), outline=(*PAL["gold"], 34), width=2)
+    return _pattern_finish(im, 0.25, 4)
+
+
+def theme_seal(rng):
+    """印章/圆窗抽象纹理：少量圆形和方形印记，避免出现文字。"""
+    im = _pattern_base(light=True)
+    d = ImageDraw.Draw(im, "RGBA")
+    for _ in range(7):
+        x = rng.randint(80, W - 80)
+        y = rng.randint(70, H - 70)
+        size = rng.randint(90, 230)
+        col = (*PAL["seal"], rng.randint(16, 32))
+        if rng.random() < 0.55:
+            d.ellipse((x-size, y-size, x+size, y+size), outline=col, width=4)
+            d.ellipse((x-size+18, y-size+18, x+size-18, y+size-18), outline=(*PAL["gold"], 20), width=2)
+        else:
+            d.rounded_rectangle((x-size, y-size, x+size, y+size), radius=22, outline=col, width=4)
+    return _pattern_finish(im, 0.45, 4)
+
+
 THEMES = {
     "paper": theme_paper,
     "ink-wash": theme_ink_wash,
@@ -174,6 +247,10 @@ THEMES = {
     "mist": theme_mist,
     "bamboo": theme_bamboo,
     "bronze": theme_bronze,
+    "grid": theme_grid,
+    "arcs": theme_arcs,
+    "lattice": theme_lattice,
+    "seal": theme_seal,
 }
 
 
