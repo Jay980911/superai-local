@@ -35,6 +35,7 @@ function defaults() {
     models: [],
     currentModelId: '',   // 空 = 未选择，用户必须选一个
     autoExec: true,
+    uiTheme: 'warm',          // 全局主题，同时作用于加载页、登录页与工作台
     scanGlobalSkills: false,  // 默认只扫 superai data/skills；true=同时扫 ~/.agents/skills 等 dsh 默认根（需用户显式同意）
     workspace: '',        // 全局默认工作目录覆盖（用户在无活动会话时选的目录）；
                           // 空 = 用安装目录/workspace。每个会话可再单独覆盖。
@@ -83,6 +84,7 @@ function ensureDataDirs() {
  *  - 收敛非法 api 取值；currentModelId 指向失效条目时清空
  */
 function migrate(s) {
+  if (!['warm', 'mist', 'night'].includes(s.uiTheme)) s.uiTheme = 'warm';
   if (!Array.isArray(s.models)) { s.models = []; return s; }
   // workspace 全局默认目录：只接受非空字符串，其他值收敛为空
   if (typeof s.workspace !== 'string') s.workspace = '';

@@ -17,3 +17,14 @@ data/pptist/*
 !data/pptist/dist/
 
 build/
+.pi/
+
+# 临时调试脚本与产物（不入库）
+ssh_*.py
+outputs/
+workspace/
+python-runtime/
+ppt-ai-intro/
+nul
+*.err
+build-portable.log

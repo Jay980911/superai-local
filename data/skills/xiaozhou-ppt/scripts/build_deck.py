@@ -23,6 +23,13 @@ from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.oxml.ns import qn
 from lxml import etree
+# 稳定性兜底：确保本脚本所在目录在 sys.path，便于从任意工作目录直接运行
+# （部分内嵌 Python 运行时会剥离 CWD，导致 import styles / style_spec 失败）。
+import os as _os
+import sys as _sys
+_SCRIPT_DIR = _os.path.dirname(_os.path.abspath(__file__))
+if _SCRIPT_DIR not in _sys.path:
+    _sys.path.insert(0, _SCRIPT_DIR)
 try:
     from styles import get_style
 except ImportError:

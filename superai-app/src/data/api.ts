@@ -39,10 +39,14 @@ export interface ModelConfig {
   kind?: 'chat' | 'image';  // 用途：对话 / 图像生成（云端字段，image-gen 同步用）
 }
 
+export type UiTheme = 'warm' | 'mist' | 'night';
+
 export interface Settings {
   models: ModelConfig[];
   currentModelId: string;
   autoExec: boolean;
+  /** 应用于加载页、登录页和全部应用界面的统一主题。 */
+  uiTheme?: UiTheme;
   /** 是否扫描全局技能目录（~/.agents/skills 等 dsh 默认根）。默认 false：只扫 superai data/skills。 */
   scanGlobalSkills?: boolean;
   /** 全局默认工作目录覆盖（用户在无活动会话时选的目录）；空 = 安装目录/workspace */
@@ -96,7 +100,7 @@ function cloudToModel(m: CloudModel): ModelConfig {
 }
 
 export async function getSettings(): Promise<Settings> {
-  const local: Settings = isElectron ? await (window as any).superai.getSettings() : { models: [], currentModelId: '', autoExec: true };
+  const local: Settings = isElectron ? await (window as any).superai.getSettings() : { models: [], currentModelId: '', autoExec: true, uiTheme: 'warm' };
   // 登录后：models + currentModelId 从云端取，autoExec/workspace 等仍用本地
   if (getStoredToken()) {
     try {
@@ -110,7 +114,7 @@ export async function getSettings(): Promise<Settings> {
 
 export async function saveSettings(patch: Partial<Settings>): Promise<Settings> {
   if (isElectron) return await (window as any).superai.saveSettings(patch);
-  return { models: [], currentModelId: '', autoExec: patch.autoExec ?? true };
+  return { models: [], currentModelId: '', autoExec: patch.autoExec ?? true, uiTheme: patch.uiTheme ?? 'warm' };
 }
 
 export async function getDefaultWorkspace(): Promise<string> {

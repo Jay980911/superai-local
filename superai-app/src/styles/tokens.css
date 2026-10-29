@@ -19,6 +19,8 @@
   /* 状态色（只在表达状态时使用） */
   --blue:   oklch(0.435 0.055 245);  /* 信息 · 工作目录 chip */
   --blue-soft: oklch(0.952 0.012 240);
+  --focus: rgba(94, 125, 164, 0.42);
+  --focus-soft: rgba(94, 125, 164, 0.12);
   --green:  oklch(0.520 0.085 158);  /* 成功 */
   --amber:  oklch(0.625 0.105 80);   /* 提醒 */
   --danger: #a33a32;                 /* 危险 · 文字级 */
@@ -34,15 +36,15 @@
   --bg-2:    rgba(22, 22, 26, 0.035);
 
   /* ---- 字体 ---- */
-  --font-display: 'Noto Serif SC', 'Songti SC', 'Noto Serif CJK SC', serif;
-  --font-body: 'Space Grotesk', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  --font-mono: 'JetBrains Mono', 'SFMono-Regular', 'Noto Sans Mono CJK SC', ui-monospace, monospace;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI Variable Display', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI Variable Text', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'SFMono-Regular', ui-monospace, monospace;
 
   /* ---- 字号 · 行高 ---- */
   --fs-display: 22px;  --lh-display: 1.4;
   --fs-title:   15px;  --lh-title: 1.5;
-  --fs-body:    14.5px;--lh-body: 1.8;
-  --fs-ui:      12.5px;
+  --fs-body:    14px;--lh-body: 1.72;
+  --fs-ui:      13px;
   --fs-mono:    11.5px;
   --fs-label:   9.5px;
 
@@ -69,4 +71,53 @@
      容器类图形：白色填充 + 墨色描边；单色灰阶，不用彩色图标 */
   --icon-grid: 24;
   --icon-stroke: 2;
+}
+
+/* 全局主题：同一套角色主题同步应用于 Splash、登录、工作台和设置 */
+:root[data-ui-theme="mist"] {
+  --paper: #f1f4f7;
+  --card: #fbfcfd;
+  --white: #ffffff;
+  --soft: #edf0f3;
+  --ink: #1b1e23;
+  --ink-2: #4b535d;
+  --ink-3: #7d8792;
+  --ink-4: #a7afb7;
+  --rule: #e1e5e9;
+  --rule-2: #d1d8df;
+  --blue: #607c99;
+  --blue-soft: #eaf0f6;
+  --focus: rgba(92, 123, 158, .42);
+  --focus-soft: rgba(92, 123, 158, .12);
+  --seal: #252a30;
+  --seal-hover: #101317;
+  --seal-soft: #e6ebf0;
+}
+
+:root[data-ui-theme="night"] {
+  color-scheme: dark;
+  --paper: #1b1c1f;
+  --card: #26272b;
+  --white: #202125;
+  --soft: #2b2d31;
+  --ink: #f0f1f3;
+  --ink-2: #c1c3c8;
+  --ink-3: #90939a;
+  --ink-4: #6e727a;
+  --rule: #393b40;
+  --rule-2: #4a4d53;
+  --blue: #9db4ce;
+  --blue-soft: #2a333e;
+  --focus: rgba(143, 169, 201, .5);
+  --focus-soft: rgba(143, 169, 201, .17);
+  --green: #7da58a;
+  --danger: #e18c84;
+  --seal: #e5e6e8;
+  --seal-hover: #ffffff;
+  --seal-soft: #383a3f;
+  --sh-1: 0 1px 2px rgba(0, 0, 0, .22);
+  --sh-2: 0 10px 30px -12px rgba(0, 0, 0, .42);
+  --sh-3: 0 18px 50px -18px rgba(0, 0, 0, .6);
+  --sh-card: 0 1px 2px rgba(0, 0, 0, .2), 0 8px 28px rgba(0, 0, 0, .18);
+  --sh-btn: 0 8px 20px -10px rgba(0, 0, 0, .55);
 }

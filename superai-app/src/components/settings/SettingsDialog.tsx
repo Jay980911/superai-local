@@ -22,12 +22,13 @@ import {
   syncImageModelFromCloud,
   isLoggedIn,
   type Settings,
+  type UiTheme,
   type ModelConfig,
   type MemoryFact,
   type Skill,
 } from '../../data/api';
 
-export type Tab = 'models' | 'memory' | 'skills' | 'general' | 'about';
+export type Tab = 'personalization' | 'models' | 'memory' | 'skills' | 'general' | 'about';
 
 /** API 协议的中文短标签（列表展示用） */
 const API_LABELS: Record<string, string> = {
@@ -36,7 +37,7 @@ const API_LABELS: Record<string, string> = {
   'anthropic-messages': 'Anthropic',
 };
 
-export default function SettingsDialog({ onClose, initialTab = 'models' }: { onClose: () => void; initialTab?: Tab }) {
+export default function SettingsDialog({ onClose, initialTab = 'models', theme, onThemeChange }: { onClose: () => void; initialTab?: Tab; theme: UiTheme; onThemeChange: (theme: UiTheme) => void }) {
   const [s, setS] = useState<Settings | null>(null);
   const [tab, setTab] = useState<Tab>(initialTab);
   const [editing, setEditing] = useState<string | null>(null); // 正在编辑的模型 id
@@ -105,6 +106,7 @@ export default function SettingsDialog({ onClose, initialTab = 'models' }: { onC
         <div className="dialog-body settings-body">
           {/* 左侧分类导航 */}
           <nav className="settings-nav">
+            <button className={tab === 'personalization' ? 'on' : ''} onClick={() => setTab('personalization')}>个性化</button>
             <button className={tab === 'models' ? 'on' : ''} onClick={() => setTab('models')}>模型配置</button>
             <button className={tab === 'memory' ? 'on' : ''} onClick={() => setTab('memory')}>长期记忆</button>
             <button className={tab === 'skills' ? 'on' : ''} onClick={() => setTab('skills')}>技能</button>
@@ -114,6 +116,8 @@ export default function SettingsDialog({ onClose, initialTab = 'models' }: { onC
 
           {/* 右侧内容 */}
           <div className="settings-content">
+            {tab === 'personalization' && <PersonalizationTab theme={theme} onThemeChange={onThemeChange} onToast={flash} />}
+
             {tab === 'models' && (
               <ModelsTab
                 s={s}
@@ -149,6 +153,65 @@ export default function SettingsDialog({ onClose, initialTab = 'models' }: { onC
           </div>
         </div>
         {toast && <div className="toast-mini">{toast}</div>}
+      </div>
+    </div>
+  );
+}
+
+function PersonalizationTab({
+  theme,
+  onThemeChange,
+  onToast,
+}: {
+  theme: UiTheme;
+  onThemeChange: (theme: UiTheme) => void;
+  onToast: (message: string) => void;
+}) {
+  const themes: Array<{ id: UiTheme; name: string; detail: string }> = [
+    { id: 'warm', name: '暖纸', detail: '系统默认 · 暖白与柔灰' },
+    { id: 'mist', name: '雾灰', detail: '冷中性 · 清晰克制' },
+    { id: 'night', name: '夜色', detail: '深色 · 低亮护眼' },
+  ];
+
+  const selectTheme = (next: UiTheme) => {
+    onThemeChange(next);
+    onToast('主题已应用到所有页面');
+  };
+
+  return (
+    <div className="personalization-tab">
+      <div className="tab-head">
+        <h3>应用主题</h3>
+        <span className="theme-global-badge">全局</span>
+      </div>
+      <p className="hint">一个主题统一应用于启动加载页、登录页、工作台和设置 / 市场，不需要逐页重复设置。</p>
+      <div className="theme-presets">
+        {themes.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={`theme-preset ${theme === item.id ? 'on' : ''}`}
+            aria-pressed={theme === item.id}
+            onClick={() => selectTheme(item.id)}
+          >
+            <span className={`theme-preset-preview ${item.id}`}>
+              <span className="theme-mini-login"><i /><b /><em /></span>
+              <span className="theme-mini-workspace"><i /><b /><em /></span>
+            </span>
+            <span className="theme-preset-copy">
+              <strong>{item.name}</strong>
+              <small>{item.detail}</small>
+            </span>
+            <span className="theme-radio" aria-hidden="true" />
+          </button>
+        ))}
+      </div>
+      <div className="theme-surfaces">
+        <span>统一应用到</span>
+        <span>加载页</span>
+        <span>登录页</span>
+        <span>工作台</span>
+        <span>设置与市场</span>
       </div>
     </div>
   );

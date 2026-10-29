@@ -1,6 +1,6 @@
 ---
 name: xiaozhou-ppt
-description: 多风格 PPT 生成引擎，支持新中式、现代简约、商务汇报三种风格。
+description: 多风格 PPT 生成引擎。内置新中式/现代/商务稳定模板，并具备「原创能力」——可从一段文字 brief 原创出全新视觉风格（配色/字体/版式组件），无需为每种风格改代码。
 ---
 
 # xiaozhou-ppt
@@ -9,11 +9,47 @@ description: 多风格 PPT 生成引擎，支持新中式、现代简约、商�
 
 ## 风格
 
-通过 `build_deck.py` 的 `--style` 或 `Deck(style=...)` 选择：
+通过 `build_deck.py` 的 `--style` 或 `Deck(style=...)` 选择（**稳定模板，向后兼容，行为不变**）：
 
-- `xinzhongshi`：新中式、国风、低饱和大地色、书法标题、朱砂印章、留白虚实。
+- `xinzhongshi`：新中式、国风、低饱和大地色、书法标题、朱砂印章、留白虚实。（默认）
 - `modern`：现代简约、冷色高对比、无衬线字体、网格版式、信息卡片。
 - `business`：商务汇报、深蓝/米白/金色、稳重标题、企业化版式、数据优先。
+
+## 原创能力（从 brief 设计，而非套模板）
+
+当需求不是这 3 套稳定风格时，不要改 `build_deck.py`、也不要新增 `StyleConfig`，
+而是用「设计合成器」从一段文字需求原创出整套视觉：
+
+```python
+from design_synth import synthesize
+out = synthesize({
+    "topic": "国潮茶饮品牌",
+    "vibe": "甜美潮玩",                       # 或 科技未来 / 美食 / 国风 / 极简 / 商务
+    "colors": ["#F7F3EE","#F4A8C4","#E94752","#64C9D4"],  # 可选，不给则用 vibe 默认调色板
+    "elements": ["大幅IP图","圆角卡片","贴纸标签","IP矩阵","海外地图","时间轴","图表","闭环"],
+    "mood": "年轻鲜明、有收藏感、不过度幼稚",
+}, out_dir="workspace/xxx")
+# out = {"style": {...}, "plan": [...页面规划...], "image_needs": {"needs":[背景图], "subjects":[主体图]}}
+```
+
+`synthesize` 会产出：
+1. **`style`**：一份 `StyleSpec` 数据（配色 / 字体 / 组件标签 `tags`），可被 `load_style()` 直接消费。
+2. **`plan`**：页面规划（封面 / 目录 / 时间轴 / IP矩阵 / 焦点 / 机制 / 画像 / 渠道 / 地图 / 闭环 / 结语），宿主按此拼页面。
+3. **`image_needs`**：背景图 `needs.json`（直接喂给 `prepare_backgrounds.py`）+ 主体图 `subjects.json`（角色/大图，走 image-gen），以及一份 `style_card.json` 供背景级联复用。
+
+### 原理（规则优先，有 LLM 则增强）
+- 默认走 `design_synth.VIBE_LIBRARY` / `PALETTE_LIBRARY` 的确定性映射，**完全离线可用**，保证稳定性。
+- 若运行时检测到宿主 LLM 钩子（环境变量 `$SUPERAI_LLM` 指向可执行脚本），会把 draft 交给它做一次增强（色彩和谐 / 补充页面 / 丰富提示词），**失败自动回退规则结果，绝不阻断主流程**。
+
+### 版式原子（`components.py`）
+原创风格不再写死坐标，而是用可复用组件拼装：`rounded_card` / `sticker_tag` / `chip` / `hero_image` / `stat_tile` / `timeline` / `matrix_grid` / `bar_chart` / `donut` / `abstract_map`（合规：只画无边界大陆剪影，绝不描国界）/ `loop_diagram`。每个组件签名统一为 `(deck, s, spec, ...)`，只“画”不“决定内容”。
+
+### 风格即数据（`style_spec.py`）
+`StyleSpec` 替代了原来写死的 `StyleConfig`；可用 4 种方式构造：
+命名预设 `load_style("xinzhongshi")` / 直接字典 / `from_style_card()`（参考图风格卡）/ `design_synth` 产出。
+`STYLE_PRESETS` 中除 3 套稳定风格外，另含 `candy` / `tech` 两个原创基底示例，证明框架可承载非国风。
+
+> 稳定性约定：**国风等 3 套稳定模板与 `build_deck.py` 既有 8 种版式保持不变**；原创路径是纯新增模块，只在显式传入 brief 时启用。
 
 ## 命令示例
 

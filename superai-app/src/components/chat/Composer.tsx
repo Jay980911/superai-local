@@ -1,6 +1,7 @@
 // 输入区 · §6
 import { useState } from 'react';
 import type { PickedFile } from '../../data/api';
+import { Sparkle } from '../icons/Icon';
 
 function fmtSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`;
@@ -94,7 +95,7 @@ export default function Composer({
           />
           <div className="ctools">
             <button className="tbtn b" onClick={onAttach} title="添加附件（保存到工作目录/_attachments，文本随消息发给 AI，二进制仅存目录）">＋ 附件</button>
-            <button className="tbtn b" onClick={onOpenSkills} title="查看已安装的技能">✨ 技能</button>
+            <button className="tbtn b" onClick={onOpenSkills} title="查看已安装的技能"><Sparkle size={14} />技能</button>
             <button className="tbtn" onClick={onOpenSettings} title="模型设置">模型 ▾</button>
             <button className="tbtn" onClick={onToggleAuto} title="工具调用执行策略">
               <span className={`switch ${autoExec ? '' : 'off'}`} />自动执行

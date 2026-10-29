@@ -1,10 +1,10 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import './App.css';
 import SessionSidebar from '../components/sidebar/SessionSidebar';
 import LoginScreen from '../components/auth/LoginScreen';
 import Splash from '../components/auth/Splash';
 import ChatHeader from '../components/chat/ChatHeader';
-import { ChatStream, EmptyState } from '../components/chat/ChatStream';
+import { ChatStream, ChatSkeleton, EmptyState } from '../components/chat/ChatStream';
 import Composer from '../components/chat/Composer';
 import { OutputPanel } from '../components/output/OutputPanel';
 import type { Pane } from '../components/output/OutputPanel';
@@ -40,6 +40,7 @@ import {
   copyAttachmentIn,
   type AgentEvent,
   type PickedFile,
+  type UiTheme,
 } from '../data/api';
 import {
   getStoredToken,
@@ -61,11 +62,17 @@ export default function App() {
   const [outputMax, setOutputMax] = useState(false);
   const [pane, setPane] = useState<Pane>('tree');
   const [mode, setMode] = useState<'main' | 'empty'>(isElectron ? 'empty' : 'main');
+  const [isSessionLoading, setIsSessionLoading] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSession, setActiveSession] = useState<Session | null>(null);
   const [msgs, setMsgs] = useState<Message[]>(isElectron ? [] : mockMessages);
   const [draft, setDraft] = useState('');
   const [autoExec, setAutoExec] = useState(true);
+  const [uiTheme, setUiTheme] = useState<UiTheme>(() => {
+    const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('superai_ui_theme') : null;
+    return cached === 'mist' || cached === 'night' || cached === 'warm' ? cached : 'warm';
+  });
+  const themeTouchedRef = useRef(false);
   const [attachments, setAttachments] = useState<PickedFile[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -78,6 +85,54 @@ export default function App() {
   const [activeFile, setActiveFile] = useState<{ name: string; path: string } | null>(null);
   const [fileContent, setFileContent] = useState('');
   const streamRef = useRef<HTMLDivElement>(null);
+  const [showJumpBottom, setShowJumpBottom] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [chatScrolled, setChatScrolled] = useState(false);
+  const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
+  const [hoveredHistoryId, setHoveredHistoryId] = useState<string | null>(null);
+  const stickToBottomRef = useRef(true);
+  const messageNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const historyItems = useMemo(() => msgs.filter((m) => m.role === 'user'), [msgs]);
+  const hoveredHistoryIndex = historyItems.findIndex((message) => message.id === hoveredHistoryId);
+  const isNearBottom = useCallback((el: HTMLDivElement) =>
+    el.scrollHeight - el.scrollTop - el.clientHeight < 72, []);
+  const updateScrollState = useCallback(() => {
+    const el = streamRef.current;
+    if (!el) return;
+    const near = isNearBottom(el);
+    const readLine = el.getBoundingClientRect().top + Math.min(128, el.clientHeight * 0.28);
+    let nearestId: string | null = null;
+    let nearestDistance = Infinity;
+    for (const message of historyItems) {
+      const node = messageNodesRef.current.get(message.id);
+      if (!node) continue;
+      const rect = node.getBoundingClientRect();
+      const distance = readLine < rect.top ? rect.top - readLine : readLine > rect.bottom ? readLine - rect.bottom : 0;
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestId = message.id;
+      }
+    }
+    setActiveHistoryId((current) => current === nearestId ? current : nearestId);
+    setChatScrolled(el.scrollTop > 0);
+    stickToBottomRef.current = near;
+    setShowJumpBottom(!near);
+    if (near) setUnreadCount(0);
+  }, [historyItems, isNearBottom]);
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const el = streamRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+    updateScrollState();
+  }, [updateScrollState]);
+  const registerMessageNode = useCallback((id: string, node: HTMLDivElement | null) => {
+    if (node) messageNodesRef.current.set(id, node);
+    else messageNodesRef.current.delete(id);
+  }, []);
+  const jumpToMessage = useCallback((id: string) => {
+    const node = messageNodesRef.current.get(id);
+    if (node) node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, []);
   /** 本轮是否已选中可预览主产物（HTML/PPT 等）；优先展示主产物，避免被后到的 .json/.log 覆盖 */
   const preferredOpened = useRef(false);
   /** 当前活跃会话 ref（避免 onEvent 闭包里 activeSession 过期） */
@@ -125,6 +180,7 @@ export default function App() {
     cloudLogout();
     setCloudUser(null);
     setActiveSession(null);
+    setIsSessionLoading(false);
     setMsgs([]);
     setSessions([]);
     setMode('empty');
@@ -180,6 +236,17 @@ export default function App() {
     setTimeout(() => setToast(null), 1800);
   }, []);
 
+  useEffect(() => {
+    document.documentElement.dataset.uiTheme = uiTheme;
+  }, [uiTheme]);
+
+  const applyUiTheme = useCallback((theme: UiTheme) => {
+    themeTouchedRef.current = true;
+    setUiTheme(theme);
+    localStorage.setItem('superai_ui_theme', theme);
+    void saveSettings({ uiTheme: theme }).catch(() => showToast('主题已切换，但保存失败'));
+  }, [showToast]);
+
   // 加载工作目录的真实文件树
   const loadFileTree = useCallback(async (ws?: string) => {
     if (!isElectron) return;
@@ -220,20 +287,26 @@ export default function App() {
     }
   }, [workspace, showToast]);
 
-  // 初始化：读工作目录 + 菜单事件桥接 + 加载会话列表 + 偏好
+  // 初始化菜单、默认工作目录和偏好。会话恢复在 pickSession 声明之后执行，避免 TDZ。
   useEffect(() => {
     if (!isElectron) return;
     getDefaultWorkspace().then((ws) => {
       setWorkspace(ws);
       if (ws) loadFileTree(ws);
     });
-    listSessions().then(setSessions);
-    getSettings().then((st) => setAutoExec(!!st.autoExec));
+    getSettings().then((st) => {
+      setAutoExec(!!st.autoExec);
+      if (!themeTouchedRef.current) {
+        const cached = localStorage.getItem('superai_ui_theme');
+        const savedTheme = cached === 'warm' || cached === 'mist' || cached === 'night' ? cached : st.uiTheme || 'warm';
+        setUiTheme(savedTheme);
+      }
+    });
     onMenu((action) => {
       if (action === 'settings') setSettingsOpen(true);
       else if (action === 'about') showToast('SuperAI · 本地 AI 工作台 v1.0.0');
     });
-  }, []);
+  }, [loadFileTree, showToast]);
 
   // 刷新会话列表（从存储重读）
   const refreshSessions = useCallback(async () => {
@@ -318,6 +391,9 @@ export default function App() {
   );
 
   const pickSession = useCallback(async (s: Session) => {
+    // 先同步 ref，再启动异步读取，避免旧会话请求覆盖用户刚选中的会话。
+    const requestedId = s.id;
+    activeSessionRef.current = s;
     setActiveSession(s);
     setPane('tree');
     setMode('main');
@@ -325,27 +401,56 @@ export default function App() {
       // 切到正在运行的会话：从缓存恢复实时状态（后端只存最终结果，运行中消息还没落盘）
       if (runningSids.has(s.id) && runMsgsCache.current.has(s.id)) {
         setMsgs(runMsgsCache.current.get(s.id)!);
+        setIsSessionLoading(false);
         const ws = s.workspace || '';
         setWorkspace(ws);
         if (ws) loadFileTree(ws);
         return;
       }
-      const full = await getSession(s.id);
-      if (full) {
-        setMsgs(full.messages || []);
-        // 空会话回到空态，不要留一片空白流
-        if (!full.messages || full.messages.length === 0) setMode('empty');
-        // 云端会话 workspace 在 Session 上，本地在 full 上
-        const ws = full.workspace || s.workspace || '';
-        // 始终同步当前显示，避免切到无工作目录的会话时残留上一个会话的目录
-        setWorkspace(ws);
-        if (ws) loadFileTree(ws);
-      } else {
-        setMsgs([]);
-        setMode('empty');
+      setIsSessionLoading(true);
+      try {
+        const full = await getSession(requestedId);
+        // 用户在读取期间切换了另一个会话时，丢弃这次旧请求的结果。
+        if (activeSessionRef.current?.id !== requestedId) return;
+        if (full) {
+          setMsgs(full.messages || []);
+          // 空会话回到空态，不要留一片空白流
+          if (!full.messages || full.messages.length === 0) setMode('empty');
+          // 云端会话 workspace 在 Session 上，本地在 full 上
+          const ws = full.workspace || s.workspace || '';
+          // 始终同步当前显示，避免切到无工作目录的会话时残留上一个会话的目录
+          setWorkspace(ws);
+          if (ws) loadFileTree(ws);
+        } else {
+          setMsgs([]);
+          setMode('empty');
+        }
+      } finally {
+        if (activeSessionRef.current?.id === requestedId) setIsSessionLoading(false);
       }
     }
-  }, [loadFileTree, activeSession, draft, runningSids]);
+  }, [loadFileTree, runningSids]);
+
+  // 会话列表异步加载后恢复左侧列表第一项（列表接口已按最新回复排序）。
+  // 只执行一次，避免 pickSession 的状态依赖变化后重复覆盖用户手动选择。
+  const sessionsRestoredRef = useRef(false);
+  useEffect(() => {
+    if (!isElectron || sessionsRestoredRef.current) return;
+    let cancelled = false;
+    listSessions().then((list) => {
+      if (cancelled) return;
+      // 先写入列表，再标记完成；StrictMode 或热更新重新执行时不会丢失列表。
+      setSessions(list);
+      if (!sessionsRestoredRef.current) {
+        sessionsRestoredRef.current = true;
+        const latest = list[0];
+        if (latest) void pickSession(latest);
+      }
+    }).catch(() => {
+      if (!cancelled) showToast('读取会话列表失败');
+    });
+    return () => { cancelled = true; };
+  }, [pickSession, showToast]);
 
   const newChat = useCallback(async () => {
     // 保存当前会话草稿
@@ -365,6 +470,7 @@ export default function App() {
     const s: Session = { id: sid || 'temp-' + Date.now(), title: '新对话', summary: '0 条消息', time: '刚刚', group: '其他', workspace: ws };
     setActiveSession(s);
     if (ws && ws !== workspace) { setWorkspace(ws); loadFileTree(ws); }
+    setIsSessionLoading(false);
     setMode('empty');
     setPane('empty');
     setSide('on');
@@ -378,6 +484,7 @@ export default function App() {
     await apiDeleteSession(id);
     if (activeSession?.id === id) {
       setActiveSession(null);
+      setIsSessionLoading(false);
       setMode('empty');
       setMsgs([]);
     }
@@ -407,6 +514,27 @@ export default function App() {
       document.querySelector<HTMLTextAreaElement>('.cbox textarea')?.focus();
     });
   }, []);
+
+  useEffect(() => {
+    if (mode !== 'main') return;
+    let frame = 0;
+    const scrollLatest = () => {
+      const el = streamRef.current;
+      if (!el) return;
+      el.scrollTo({ top: el.scrollHeight, behavior: 'auto' });
+      updateScrollState();
+    };
+    // 会话切换后等待消息节点完成布局，再执行两次定位，确保回到最新消息。
+    frame = requestAnimationFrame(() => {
+      scrollLatest();
+      frame = requestAnimationFrame(() => {
+        scrollLatest();
+        frame = requestAnimationFrame(scrollLatest);
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeSession?.id, msgs.length, mode, isSessionLoading, updateScrollState]);
+
 
   // 更新最后一条 agent 消息
   const updateLastAgent = useCallback((fn: (m: Extract<Message, { role: 'agent' }>) => Extract<Message, { role: 'agent' }>, eventSid?: string) => {
@@ -606,10 +734,8 @@ export default function App() {
     // 本地副本跟踪 agent 最终状态（流式更新 state，结束时存盘）
     let agentFinal: Extract<Message, { role: 'agent' }> = agentMsg as Extract<Message, { role: 'agent' }>;
 
-    // 滚动到底
-    requestAnimationFrame(() => {
-      streamRef.current?.scrollTo({ top: streamRef.current.scrollHeight });
-    });
+    // 发送后回到最新位置
+    requestAnimationFrame(() => scrollToBottom('smooth'));
 
     // 构建历史（只取 role+content）
     const history = msgs
@@ -745,9 +871,12 @@ export default function App() {
         agentFinal = { ...agentFinal, text: (agentFinal.text || '') + `\n\n⚠ ${e.message}`, time: '刚刚', elapsed: fmtElapsed(), steps: markStepsSettled(agentFinal) };
         updateLastAgent((m) => ({ ...m, text: (m.text || '') + `\n\n⚠ ${e.message}`, time: '刚刚', elapsed: fmtElapsed(), steps: markStepsSettled(m) }), sid);
       }
-      if (isActive()) requestAnimationFrame(() => {
-        streamRef.current?.scrollTo({ top: streamRef.current.scrollHeight });
-      });
+      if (isActive() && stickToBottomRef.current) {
+        requestAnimationFrame(() => scrollToBottom('smooth'));
+      } else if (isActive()) {
+        setShowJumpBottom(true);
+        setUnreadCount((n) => n + 1);
+      }
     };
 
     // sessionId 透传：dsh 侧同一会话复用同一 session，自行维护多轮上下文
@@ -780,7 +909,7 @@ export default function App() {
       runMsgsCache.current.delete(sid);
       setRunningSids((prev) => { const n = new Set(prev); n.delete(sid); return n; });
     }
-  }, [draft, runningSids, activeSession, workspace, msgs, attachments, showToast, updateLastAgent, markStepsSettled, refreshSessions, loadFileTree, buildAttachmentBlock, onOpenFile]);
+  }, [draft, runningSids, activeSession, workspace, msgs, attachments, showToast, updateLastAgent, markStepsSettled, refreshSessions, loadFileTree, buildAttachmentBlock, onOpenFile, scrollToBottom]);
 
   const isRunningHere = !!activeSession && runningSids.has(activeSession.id);
 
@@ -829,6 +958,7 @@ export default function App() {
           <ChatHeader
             title={mode === 'empty' || !activeSession ? '新对话' : activeSession.title}
             meta={chatMeta}
+            scrolled={mode !== 'empty' && chatScrolled}
             side={side}
             onOpenSide={openSide}
             workspace={workspace}
@@ -837,11 +967,68 @@ export default function App() {
             onOpenRight={() => setRightSide('on')}
           />
 
-          {mode === 'empty' ? (
+          {isSessionLoading ? (
+            <div className="stream session-loading" role="status" aria-live="polite" aria-label="正在加载会话">
+              <ChatSkeleton />
+            </div>
+          ) : mode === 'empty' ? (
             <EmptyState onPick={pickSuggestion} />
           ) : (
-            <div className="stream" ref={streamRef}>
-              <ChatStream messages={msgs} onAction={handleAction} />
+            <div
+              className="stream"
+              ref={streamRef}
+              onScroll={updateScrollState}
+            >
+              <ChatStream messages={msgs} onAction={handleAction} registerMessageNode={registerMessageNode} user={cloudUser} assistantAvatar="/avatar-superai.svg" />
+              {showJumpBottom && (
+                <button className="jump-bottom" onClick={() => scrollToBottom('smooth')} aria-label="回到最新消息">
+                  <span className="jump-arrow">↓</span>
+                  {unreadCount > 0 && <span className="jump-count">{unreadCount > 99 ? '99+' : unreadCount}</span>}
+                </button>
+              )}
+              <div className="history-rail">
+                <div
+                  className="history-rail-track"
+                  role="navigation"
+                  aria-label="消息位置"
+                  style={{ height: `${Math.min(224, Math.max(72, historyItems.length * 8))}px` }}
+                >
+                  {historyItems.map((m, i) => {
+                    const distance = hoveredHistoryIndex < 0 ? Infinity : Math.abs(i - hoveredHistoryIndex);
+                    const tickState = distance === 0
+                      ? 'focused'
+                      : distance === 1
+                      ? 'neighbor'
+                      : hoveredHistoryIndex < 0 && m.id === activeHistoryId
+                      ? 'current'
+                      : '';
+                    const speaker = m.role === 'user' ? '你' : 'SuperAI';
+                    const preview = (m.text || '').replace(/\s+/g, ' ').slice(0, 48) || '处理中…';
+                    return (
+                      <button
+                        key={m.id}
+                        className={`history-tick ${tickState}`}
+                        type="button"
+                        title={`${speaker} · ${preview}`}
+                        aria-label={`跳到第 ${i + 1} 条消息：${speaker}，${preview}`}
+                        onMouseEnter={() => setHoveredHistoryId(m.id)}
+                        onMouseLeave={() => setHoveredHistoryId(null)}
+                        onFocus={() => setHoveredHistoryId(m.id)}
+                        onBlur={() => setHoveredHistoryId(null)}
+                        onClick={() => jumpToMessage(m.id)}
+                      >
+                        <span className="history-tick-bar" aria-hidden="true" />
+                        {tickState === 'focused' && (
+                          <span className="history-tick-preview" role="tooltip">
+                            <strong>{speaker} · {i + 1}</strong>
+                            <span>{preview}</span>
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           )}
 
@@ -884,7 +1071,7 @@ export default function App() {
         />
       </main>
 
-      {settingsOpen && <SettingsDialog initialTab={settingsTab} onClose={() => { setSettingsOpen(false); syncCloudModel(); }} />}
+      {settingsOpen && <SettingsDialog initialTab={settingsTab} theme={uiTheme} onThemeChange={applyUiTheme} onClose={() => { setSettingsOpen(false); syncCloudModel(); }} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );

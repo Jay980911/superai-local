@@ -16,7 +16,7 @@
 // 为什么手写而不 import ESM 客户端：Electron 主进程是 CJS，dynamic import
 // ESM 在主进程里不稳；按公开 wire 协议实现最稳，且零依赖。
 
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { randomUUID } = require('crypto');
@@ -58,33 +58,55 @@ function resolveDshBin(override) {
 }
 
 /**
- * 解析用于 spawn dsh 的 node 可执行文件。
- * Electron 主进程的 process.execPath 是 electron.exe，不能跑 dsh，因此：
- *   1. override 参数（打包态由主进程传入 resources 里的 bundled node）
- *   2. SUPERAI_NODE_BIN 环境变量显式指定
- *   3. PATH 里查找 node
- *   4. 非 Electron 的纯 node 环境（测试/CLI）直接用 process.execPath
+ * 解析 dsh 的独立 Node 运行时。Electron 自带的 node.exe 不是独立 Node，
+ * dsh 的内部模块加载器会按 Electron/V8 指纹校验并拒绝不支持的 Electron 版本。
  */
-function resolveNodeBin(override) {
-  if (override && fs.existsSync(override)) return override;
-
-  const envOverride = process.env.SUPERAI_NODE_BIN;
-  if (envOverride && fs.existsSync(envOverride)) return envOverride;
-
-  if (!process.versions.electron) return process.execPath;
-
-  const exe = process.platform === 'win32' ? 'node.exe' : 'node';
-  const dirs = String(process.env.PATH || '').split(path.delimiter);
-  for (const dir of dirs) {
-    if (!dir) continue;
-    const candidate = path.join(dir.trim(), exe);
-    try {
-      if (fs.statSync(candidate).isFile()) return candidate;
-    } catch { /* 不在这个目录 */ }
+function inspectNode(candidate) {
+  try {
+    const result = execFileSync(candidate, [
+      '-p',
+      'JSON.stringify({ version: process.version, electron: process.versions.electron || null })',
+    ], { encoding: 'utf8', windowsHide: true, timeout: 3000 }).trim();
+    const info = JSON.parse(result);
+    const major = Number(String(info.version).replace(/^v/, '').split('.')[0]);
+    return { ...info, major, usable: !info.electron && major >= 22 };
+  } catch {
+    return null;
   }
+}
+
+function resolveNodeBin(override) {
+  const exe = process.platform === 'win32' ? 'node.exe' : 'node';
+  const explicit = override || process.env.SUPERAI_NODE_BIN;
+  if (explicit && fs.existsSync(explicit)) {
+    const info = inspectNode(explicit);
+    if (info?.usable) return explicit;
+    throw new Error(`指定的 dsh runtime 不是独立 Node 22+：${explicit}`);
+  }
+
+  const candidates = [];
+  if (process.versions.electron) {
+    candidates.push(path.join(__dirname, '..', 'build', 'dsh-runtime', 'node', exe));
+    for (const dir of String(process.env.PATH || '').split(path.delimiter)) {
+      if (dir) candidates.push(path.join(dir.trim(), exe));
+    }
+  } else {
+    candidates.push(process.execPath);
+  }
+
+  const seen = new Set();
+  for (const candidate of candidates) {
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+    try {
+      if (!fs.statSync(candidate).isFile()) continue;
+    } catch { continue; }
+    if (inspectNode(candidate)?.usable) return candidate;
+  }
+
   throw new Error(
-    '未找到 node 可执行文件：dsh runtime 需要独立 Node 运行时。' +
-    '请安装 Node 22+ 并加入 PATH，或设置 SUPERAI_NODE_BIN 指向 node 可执行文件。',
+    '未找到可用的独立 Node 22+ 运行时。' +
+    '请执行 npm run stage:dsh，或安装 Node 22+ 并加入 PATH，或设置 SUPERAI_NODE_BIN。',
   );
 }
 
@@ -398,6 +420,7 @@ function spawnRuntime(model, workspace, dshHome, patchFile, nodeBin, dshBin) {
       process.env.NODE_USE_ENV_PROXY = '1';
     }
   } catch { /* settings 加载失败不阻塞 spawn */ }
+  console.log(`[dsh-client] spawn runtime: node=${nodeBin} dsh=${dshBin}`);
   console.log(`[dsh-client] spawn env: UNSPLASH=${process.env.UNSPLASH_ACCESS_KEY ? 'on' : 'off'} PROXY=${process.env.HTTPS_PROXY || 'off'} IMAGEGEN=${process.env.SUPERAI_IMAGEGEN ? 'on' : 'off'}`);
   return spawn(nodeBin, [dshBin, '--profile', 'sdk', '--patch', patchFile], {
     cwd: workspace,

@@ -21,6 +21,7 @@
     "stage:dsh": "node scripts/stage-dsh-runtime.cjs",
     "build:win": "npm run stage:dsh && npm run build:web && electron-builder --win --x64",
     "build:dir": "npm run stage:dsh && npm run build:web && electron-builder --dir --win --x64",
+    "build:portable": "npm run stage:dsh && npm run build:web && electron-builder --win portable --x64",
     "start": "electron electron/main.cjs"
   },
   "engines": {
@@ -97,10 +98,19 @@
           "arch": [
             "x64"
           ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "superai-app/public/icon.ico",
       "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "SuperAI-Portable-${version}.exe"
     },
     "nsis": {
       "oneClick": false,

@@ -1,17 +1,39 @@
 // 对话流 · §6 消息/步骤卡/文件卡/空态
 import type { Message, Action, ProducedFile } from '../../types';
 import { useState, useEffect } from 'react';
+import type { CloudUser } from '../../data/cloud';
 import { genFiles, suggestions as mockSuggestions } from '../../data/mock';
 import { isElectron, getSuggestions } from '../../data/api';
 import Markdown from './Markdown';
 
 const suggestions = isElectron ? getSuggestions() : mockSuggestions;
-import { Check, Clock, FileTypeIcon } from '../icons/Icon';
+import { Check, Clock, FileTypeIcon, Folder, Sparkle, Chart } from '../icons/Icon';
 
-export function UserMessage({ msg }: { msg: Extract<Message, { role: 'user' }> }) {
+const DEFAULT_USER_AVATAR = '/avatar-user-default.svg';
+const DEFAULT_ASSISTANT_AVATAR = '/avatar-superai.svg';
+
+function MessageAvatar({ src, fallback, alt }: { src?: string | null; fallback: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [src]);
+  const usingFallback = !src || failed;
+  return (
+    <img
+      className="avatar-st"
+      src={usingFallback ? fallback : src}
+      alt={alt}
+      onError={() => { if (!usingFallback) setFailed(true); }}
+    />
+  );
+}
+
+export function UserMessage({ msg, user }: { msg: Extract<Message, { role: 'user' }>; user?: CloudUser | null }) {
+  const userName = user?.nickname || user?.username || '你';
   return (
     <div className="msg user">
-      <div className="who"><span className="st">你</span></div>
+      <div className="who">
+        <MessageAvatar src={user?.avatar} fallback={DEFAULT_USER_AVATAR} alt={`${userName}头像`} />
+        <span className="speaker">{userName}</span>
+      </div>
       <div className="body">
         {msg.text}
         {msg.attachments && msg.attachments.map((a) => (
@@ -152,14 +174,19 @@ function FileCard({
 export function AgentMessage({
   msg,
   onAction,
+  assistantAvatar = DEFAULT_ASSISTANT_AVATAR,
 }: {
   msg: Extract<Message, { role: 'agent' }>;
   onAction: (act: string) => void;
+  assistantAvatar?: string;
 }) {
   const running = msg.time.startsWith('处理中');
   return (
     <div className="msg bot">
-      <div className="who"><span className="st">S</span>SuperAI</div>
+      <div className="who">
+        <MessageAvatar src={assistantAvatar} fallback={DEFAULT_ASSISTANT_AVATAR} alt="SuperAI头像" />
+        <span className="speaker">SuperAI</span>
+      </div>
       <div className="body">
         {/* 1) 步骤卡在最前：脚本执行过程展示在总结之上，符合“先执行、后总结”的阅读顺序。
             原实现把 msg.text 放在最顶，导致“总结”出现在“脚本执行”之前。 */}
@@ -222,19 +249,66 @@ export function AgentMessage({
 export function ChatStream({
   messages,
   onAction,
+  registerMessageNode,
+  user,
+  assistantAvatar,
 }: {
   messages: Message[];
   onAction: (act: string) => void;
+  registerMessageNode?: (id: string, node: HTMLDivElement | null) => void;
+  user?: CloudUser | null;
+  assistantAvatar?: string;
 }) {
   return (
     <div className="wrap">
-      {messages.map((m) =>
-        m.role === 'user' ? (
-          <UserMessage key={m.id} msg={m} />
-        ) : (
-          <AgentMessage key={m.id} msg={m} onAction={onAction} />
-        )
-      )}
+      {messages.map((m) => (
+        <div className={`message-anchor ${m.role === 'user' ? 'user-anchor' : 'agent-anchor'}`} key={m.id} ref={(node) => registerMessageNode?.(m.id, node)}>
+          {m.role === 'user' ? (
+            <UserMessage msg={m} user={user} />
+          ) : (
+            <AgentMessage msg={m} onAction={onAction} assistantAvatar={assistantAvatar} />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function ChatSkeleton() {
+  return (
+    <div className="wrap chat-skeleton" aria-hidden="true">
+      <div className="skeleton-user-message">
+        <span className="skeleton-bar w-short" />
+        <span className="skeleton-bar w-long" />
+      </div>
+      <div className="skeleton-agent-message">
+        <div className="skeleton-speaker">
+          <span className="skeleton-avatar" />
+          <span className="skeleton-bar w-label" />
+        </div>
+        <span className="skeleton-bar w-full" />
+        <span className="skeleton-bar w-78" />
+        <div className="skeleton-steps">
+          {[0, 1, 2].map((n) => (
+            <div className="skeleton-step" key={n}>
+              <span className="skeleton-step-mark" />
+              <span className={`skeleton-bar ${n === 1 ? 'w-62' : 'w-72'}`} />
+              <span className="skeleton-bar w-time" />
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="skeleton-user-message compact">
+        <span className="skeleton-bar w-78" />
+      </div>
+      <div className="skeleton-agent-message compact">
+        <div className="skeleton-speaker">
+          <span className="skeleton-avatar" />
+          <span className="skeleton-bar w-label" />
+        </div>
+        <span className="skeleton-bar w-90" />
+        <span className="skeleton-bar w-58" />
+      </div>
     </div>
   );
 }
@@ -249,16 +323,19 @@ export function EmptyState({ onPick }: { onPick: (text: string) => void }) {
         所有操作都限定在你授权的工作目录里。
       </p>
       <div className="sugg">
-        {suggestions.map((s, i) => (
-          <div className="s" key={`${s.title}-${i}`} onClick={() => onPick(s.title)}>
-            <span className="ic">{s.icon}</span>
-            <div>
-              <div className="t">{s.title}</div>
-              <div className="d">{s.desc}</div>
+        {suggestions.map((s, i) => {
+          const SuggestionIcon = [Folder, Sparkle, Chart][i % 3];
+          return (
+            <div className="s" key={`${s.title}-${i}`} onClick={() => onPick(s.title)}>
+              <span className="ic"><SuggestionIcon size={17} /></span>
+              <div>
+                <div className="t">{s.title}</div>
+                <div className="d">{s.desc}</div>
+              </div>
+              <span className="go">→</span>
             </div>
-            <span className="go">→</span>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
