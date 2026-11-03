@@ -12,45 +12,27 @@ const tools = require('./tools.cjs');
 const sessions = require('./sessions.cjs');
 const memory = require('./memory.cjs');
 const skills = require('./skills.cjs');
+const plugins = require('./plugins.cjs');
 
 const isDev = process.env.SUPERAI_DEV === '1';
 
 let win = null;
 
-// 云端登录后的当前选中模型（含 apiKey）+ 模型列表（注册 dsh provider）。
-// 渲染进程登录后/切换模型后通过 IPC cloud:model:sync 推送；为空时回退本地 settings。
-let cloudModel = null;
-let cloudModels = null;
-
+// 云端模型镜像供设置缓存与图像模型同步；对话 runtime 始终使用本地 settings.json。
 function cloudModelToLocal(c) {
   if (!c || c.id == null) return null;
   return {
-    id: String(c.id), name: c.name || '',
+    id: String(c.id), cloudId: String(c.id), name: c.name || '',
     baseUrl: String(c.baseUrl || '').trim().replace(/\/+$/, ''),
     apiKey: c.apiKey || '',
-    model: c.modelName || '',
-    api: c.apiType || 'openai-completions',
+    model: c.modelName || c.model || '',
+    api: c.apiType || c.api || 'openai-completions',
+    hasKey: c.hasKey !== undefined ? !!c.hasKey : !!c.apiKey,
+    isDefault: !!c.isDefault,
+    kind: c.kind || 'chat',
   };
 }
-function cloudModelsToLocal(cms) {
-  // kind=image 的模型是图像生成模型（image-gen 技能用），不进 dsh 对话 provider
-  // patch（dsh 只跑对话 LLM；image-gen 脚本读 settings.imageModel，不走 dsh）。
-  return (Array.isArray(cms) ? cms : [])
-    .filter((c) => c && c.id != null && c.kind !== 'image')
-    .map((c) => ({
-      id: String(c.id), name: c.name || '',
-      baseUrl: String(c.baseUrl || '').trim().replace(/\/+$/, ''),
-      apiKey: '',  // 列表不返回 apiKey；发请求用 cloudModel(selected) 注入
-      model: c.modelName || '',
-      api: c.apiType || 'openai-completions',
-      kind: c.kind || 'chat',
-    }));
-}
 
-/** 从云端 models 列表里找 kind=image 且 hasKey 的条目（image-gen 技能的模型来源） */
-function findCloudImageModel(cms) {
-  return (Array.isArray(cms) ? cms : []).find((c) => c && c.id != null && c.kind === 'image' && c.hasKey) || null;
-}
 
 /** 云端图像模型凭证 → 本地 settings.imageModel 结构 */
 function imageCredToLocal(c) {
@@ -308,10 +290,10 @@ app.whenReady().then(() => {
   // 预热常驻 dsh runtime：把 8-9s 的 initialize 冷启动挪到应用打开时，
   // 用户发第一条消息时即可复用，无需现场初始化。非阻塞、失败静默。
   try {
-    const model = cloudModel || s.getCurrentModel();
+    const model = s.getCurrentModel();
     if (model) {
       const dshHome = path.join(s.appDataDir(), 'dsh-home');
-      const patchFile = dshPatch.writePatch(dshHome, cloudModels || s.load().models, { skillDirs: [skills.skillsDir()], includeDefaultRoots: !!s.load().scanGlobalSkills });
+      const patchFile = dshPatch.writePatch(dshHome, s.load().models, { skillDirs: [skills.skillsDir()], includeDefaultRoots: !!s.load().scanGlobalSkills });
       const runtime = dshRuntimePaths() || {};
       dsh.warmResident(model, s.defaultWorkspace(), dshHome, patchFile, runtime.nodeBin, runtime.dshBin);
     }
@@ -349,25 +331,71 @@ ipcMain.handle('models:add', (_e, model) => settings.addModel(model));
 ipcMain.handle('models:remove', (_e, id) => settings.removeModel(id));
 ipcMain.handle('models:setCurrent', (_e, id) => settings.setCurrentModel(id));
 ipcMain.handle('models:update', (_e, id, patch) => settings.updateModel(id, patch));
+ipcMain.handle('models:get', (_e, id) => settings.getModel(id));
 ipcMain.handle('models:test', async (_e, cfg) => {
   const { baseUrl, apiKey, model, api } = cfg || {};
   if (!baseUrl) return { ok:false, status:0, detail:'缺少 API 地址' };
-  const base = String(baseUrl).replace(/\/+$/, '');
   const hdr = (h) => ({ 'Content-Type':'application/json', ...h });
   try {
     let r;
     if (api === 'anthropic-messages') {
+      let base = String(baseUrl).replace(/\/+$/, '').replace(/\/v1\/messages$/i, '').replace(/\/messages$/i, '');
       r = await fetch(base + '/v1/messages', { method:'POST', headers: hdr({ 'x-api-key': apiKey||'', 'anthropic-version':'2023-06-01' }), body: JSON.stringify({ model, max_tokens:1, messages:[{role:'user',content:'ping'}] }) });
     } else if (api === 'openai-responses') {
+      let base = String(baseUrl).replace(/\/+$/, '').replace(/\/responses$/i, '');
       r = await fetch(base + '/responses', { method:'POST', headers: hdr(apiKey?{'Authorization':'Bearer '+apiKey}:{}), body: JSON.stringify({ model, input:'ping' }) });
     } else {
-      // openai-completions：GET /models 验证 baseUrl+apiKey
+      let base = String(baseUrl).replace(/\/+$/, '').replace(/\/chat\/completions$/i, '');
       r = await fetch(base + '/models', { headers: apiKey?{'Authorization':'Bearer '+apiKey}:{} });
     }
     if (r.ok) return { ok:true, status:r.status, detail:'连接成功' };
     let t=''; try { t=await r.text(); } catch {}
     return { ok:false, status:r.status, detail:`HTTP ${r.status}${t?('：'+t.slice(0,300)):''}` };
   } catch(e) { return { ok:false, status:0, detail:'网络错误：'+(e && e.message || e) }; }
+});
+
+// 图像生成模型测试：按 image-gen.mjs 的协议探测逻辑做最小化真实 POST，
+// 而不是复用 models:test 的 GET /models（对图像端点是错误端点，必失败）。
+// 协议：
+//   openai-images: POST {baseUrl}/images/generations   （baseUrl 以 /v1 结尾）
+//   chat-images:   POST {baseUrl} 直接发 messages      （baseUrl 带具体模型路由，如腾讯混元 wand）
+// 用一个极短 prompt + 最小 size 做探活，仅看 HTTP 状态；不下载图片，省配额。
+ipcMain.handle('image:test', async (_e, cfg) => {
+  const { baseUrl, apiKey, model } = cfg || {};
+  if (!baseUrl) return { ok:false, status:0, detail:'缺少 API 地址' };
+  if (!model) return { ok:false, status:0, detail:'缺少模型名' };
+  const base = String(baseUrl).replace(/\/+$/, '');
+  // 与 image-gen.mjs detectApi 一致：/v1 或 /v1/ 结尾 → openai-images，否则 chat-images
+  const isOpenAIImages = /\/v1\/?$/.test(base);
+  const hdr = { 'Content-Type':'application/json', ...(apiKey ? { Authorization:'Bearer '+apiKey } : {}) };
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 30000);
+  try {
+    let r;
+    if (isOpenAIImages) {
+      // OpenAI 兼容生图：POST {base}/images/generations
+      r = await fetch(base + '/images/generations', {
+        method:'POST', headers: hdr,
+        body: JSON.stringify({ model, prompt:'superai connectivity test', n:1, size:'256x256' }),
+        signal: ac.signal,
+      });
+    } else {
+      // chat-images（腾讯混元 wand 等）：POST {base} 发 messages
+      r = await fetch(base, {
+        method:'POST', headers: hdr,
+        body: JSON.stringify({ model, session:'superai-test-'+Date.now(), messages:[{ role:'user', content:[{ type:'text', text:'test' }] }] }),
+        signal: ac.signal,
+      });
+    }
+    if (r.ok) return { ok:true, status:r.status, detail:`连接成功（${isOpenAIImages?'openai-images':'chat-images'} 协议）` };
+    let t=''; try { t=await r.text(); } catch {}
+    return { ok:false, status:r.status, detail:`HTTP ${r.status}${t?('：'+t.slice(0,300)):''}` };
+  } catch(e) {
+    if (e && e.name === 'AbortError') return { ok:false, status:0, detail:'请求超时（30s）' };
+    return { ok:false, status:0, detail:'网络错误：'+(e && e.message || e) };
+  } finally {
+    clearTimeout(timer);
+  }
 });
 
 // ===== IPC: Agent 运行（流式） =====
@@ -400,7 +428,7 @@ function resolveAgentNodeBin() {
 }
 
 ipcMain.handle('agent:run', async (e, input, history, workspace, sessionId) => {
-  const model = cloudModel || settings.getCurrentModel();
+  const model = settings.getCurrentModel();
   if (!model) {
     return { error: '请先在设置中添加并选择 AI 模型' };
   }
@@ -414,7 +442,7 @@ ipcMain.handle('agent:run', async (e, input, history, workspace, sessionId) => {
   }
   // 模型设置 → dsh provider patch（每次按最新 settings 重写）
   const dshHome = path.join(settings.appDataDir(), 'dsh-home');
-  const patchFile = dshPatch.writePatch(dshHome, cloudModels || settings.load().models, {
+  const patchFile = dshPatch.writePatch(dshHome, settings.load().models, {
     // superai 技能目录注册进 dsh，设置面板里的技能才能被 agent 发现
     skillDirs: [skills.skillsDir()],
     // 默认只扫 superai 自己的技能目录；用户在设置里开启才放行 ~/.agents/skills 等默认根
@@ -687,6 +715,12 @@ ipcMain.handle('skills:list', () => skills.listSkills());
 ipcMain.handle('skills:read', (_e, name) => skills.readSkill(name));
 ipcMain.handle('skills:dir', () => skills.skillsDir());
 
+// ===== dsh 插件管理 =====
+ipcMain.handle('plugins:list', () => plugins.listBundles());
+ipcMain.handle('plugins:install', async (_e, spec, registry) => plugins.installBundle(spec, registry));
+ipcMain.handle('plugins:remove', async (_e, name) => plugins.removeBundle(name));
+ipcMain.handle('plugins:setEnabled', (_e, name, enabled) => plugins.setBundleEnabled(name, enabled));
+
 // ===== IPC: 会话工作目录 =====
 ipcMain.handle('sessions:setWorkspace', (_e, id, workspace) => sessions.setWorkspace(id, workspace));
 
@@ -711,14 +745,26 @@ ipcMain.handle('cloud:api', async (_e, path, init) => {
 });
 
 // ===== IPC: 云端模型同步 =====
-// 渲染进程登录后/切换模型后，把云端 selected(含 apiKey) + 列表推给主进程缓存，
-// agent:run / warmResident 优先用云端模型发 LLM。
-// 第三个参数 imageCredentials：云端 kind=image 模型的明文凭证（渲染进程已用
-// getCredentials 拉到）。有则写入本地 settings.imageModel，供 image-gen 脚本读取；
-// 无（null/undefined）则不动本地，保留用户手动配置的图像模型。
-ipcMain.handle('cloud:model:sync', (_e, credentials, models, imageCredentials) => {
-  cloudModel = cloudModelToLocal(credentials);
-  cloudModels = cloudModelsToLocal(models);
+// 本地 settings.json 是对话模型的权威来源；此通道只缓存云端镜像并同步云端图像模型凭证。
+// imageCredentials 为云端 kind=image 模型凭证；有则写入本地 settings.imageModel，
+// 无（null/undefined）则保留用户手动配置的图像模型。
+ipcMain.handle('cloud:model:sync', (_e, credentials, models, imageCredentials, accountId) => {
+  if (!credentials) {
+    dsh.cancelAll();
+    return { ok: true, hasModel: false, modelCount: 0, imageSynced: false };
+  }
+  const selected = cloudModelToLocal(credentials);
+  const cachedModels = (Array.isArray(models) ? models : [])
+    .map(cloudModelToLocal)
+    .filter(Boolean);
+  if (selected) {
+    const selectedIndex = cachedModels.findIndex((m) => m.id === selected.id);
+    if (selectedIndex >= 0) cachedModels[selectedIndex] = { ...cachedModels[selectedIndex], ...selected };
+    else cachedModels.push(selected);
+  }
+  if (accountId != null && selected) {
+    settings.save({ cloudModelCache: { accountId: String(accountId), models: cachedModels, currentModelId: selected.id, updatedAt: Date.now() } });
+  }
   let imageSynced = false;
   const img = imageCredToLocal(imageCredentials);
   if (img) {
@@ -730,5 +776,5 @@ ipcMain.handle('cloud:model:sync', (_e, credentials, models, imageCredentials) =
       console.warn('[main] sync imageModel failed:', e.message);
     }
   }
-  return { ok: true, hasModel: !!cloudModel, modelCount: cloudModels.length, imageSynced };
+  return { ok: true, hasModel: !!selected, modelCount: cachedModels.length, imageSynced };
 });

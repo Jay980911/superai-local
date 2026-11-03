@@ -410,6 +410,11 @@ function residentKey(model, dshHome, patchFile) {
 
 function spawnRuntime(model, workspace, dshHome, patchFile, nodeBin, dshBin) {
   // 显式从 settings 补注入 image-gen 所需 env（防止 process.env 被中间层过滤）
+  // 注意：proxy 仅给 unsplash / image-gen 等外网服务用，不能让模型端点也走代理——
+  // 否则用户自配的模型端点（常常直连可达，或本身就是国内/局域网地址）会被代理
+  // 转发后 502/ECONNREFUSED，表现为「测试连通（主进程 fetch 不走代理）但发消息
+  // 不通（dsh 子进程走代理）」。这里把当前模型 host + localhost 写入 NO_PROXY，
+  // 让 dsh 的 EnvHttpProxyAgent 对模型端点绕过代理。
   try {
     const settings = require('./settings.cjs');
     const cfg = settings.load();
@@ -419,9 +424,31 @@ function spawnRuntime(model, workspace, dshHome, patchFile, nodeBin, dshBin) {
       process.env.HTTP_PROXY = cfg.proxy;
       process.env.NODE_USE_ENV_PROXY = '1';
     }
+    // 无论是否开代理，都把模型 host + 本地回路加入 NO_PROXY：
+    //  - 模型端点必须直连（用户配的就是可达地址）
+    //  - 本地模型（Ollama / vLLM）绝不能走代理
+    const noProxyHosts = ['localhost', '127.0.0.1', '::1'];
+    try {
+      const u = new URL(model.baseUrl);
+      const host = u.hostname;
+      if (host && !noProxyHosts.includes(host)) noProxyHosts.push(host);
+    } catch { /* baseUrl 非标准 URL，忽略 */ }
+    // 生图端点同理：国内直连可达，不能让 agent 的 fetch/web_fetch 被死代理拖垮
+    try {
+      const imgBase = cfg.imageModel && cfg.imageModel.baseUrl;
+      if (imgBase) {
+        const host = new URL(imgBase).hostname;
+        if (host && !noProxyHosts.includes(host)) noProxyHosts.push(host);
+      }
+    } catch { /* 同上 */ }
+    const prev = process.env.NO_PROXY ? process.env.NO_PROXY.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    for (const h of noProxyHosts) if (!prev.includes(h)) prev.push(h);
+    process.env.NO_PROXY = prev.join(',');
+    // no_proxy 小写形式也设一份，部分库只认小写
+    process.env.no_proxy = process.env.NO_PROXY;
   } catch { /* settings 加载失败不阻塞 spawn */ }
   console.log(`[dsh-client] spawn runtime: node=${nodeBin} dsh=${dshBin}`);
-  console.log(`[dsh-client] spawn env: UNSPLASH=${process.env.UNSPLASH_ACCESS_KEY ? 'on' : 'off'} PROXY=${process.env.HTTPS_PROXY || 'off'} IMAGEGEN=${process.env.SUPERAI_IMAGEGEN ? 'on' : 'off'}`);
+  console.log(`[dsh-client] spawn env: UNSPLASH=${process.env.UNSPLASH_ACCESS_KEY ? 'on' : 'off'} PROXY=${process.env.HTTPS_PROXY || 'off'} NO_PROXY=${process.env.NO_PROXY || 'off'} IMAGEGEN=${process.env.SUPERAI_IMAGEGEN ? 'on' : 'off'}`);
   return spawn(nodeBin, [dshBin, '--profile', 'sdk', '--patch', patchFile], {
     cwd: workspace,
     env: {
@@ -627,6 +654,7 @@ async function doRun({ model, workspace, input, sessionId, dshHome, patchFile, o
   let stepCount = 0;
   const callIndex = new Map();   // callId → {index, name, label, startedAt, args}
   let finalText = '';
+  let llmFailureSummary = '';
   let idleResolve = null;
   const idlePromise = new Promise((resolve, reject) => { idleResolve = resolve; idleReject = reject; });
   // 取消可能发生在 run() 还没 await 到 idlePromise 时（session/prompt 回合结束才返回），
@@ -676,9 +704,25 @@ async function doRun({ model, workspace, input, sessionId, dshHome, patchFile, o
       // 指标严重误导诊断。
       if (!firstEventAt) { firstEventAt = Date.now(); if (TRACE) trace('首个 session 事件', tRun0); }
       if (TRACE) trace(`event ${event.type}`, tRun0);
+      if (TRACE && (event.type === 'assistant/attempt' || event.type === 'llm/retry' || event.type === 'turn/end')) {
+        console.log(`[dsh-trace] payload ${event.type}: ${JSON.stringify(event).slice(0, 1500)}`);
+      }
       // 首个 session 事件说明 runtime 已完成初始化并开始处理本回合。
       // 由 UI 自己根据 assistant/tool 事件切换“思考中”。
       switch (event.type) {
+        case 'llm/retry': {
+          const failure = data.failure || {};
+          const safeCode = [failure.code, failure.statusCode, failure.status]
+            .find((value) => typeof value === 'string' || typeof value === 'number');
+          const safeName = typeof failure.name === 'string' && /^[A-Za-z0-9_.-]{1,48}$/.test(failure.name)
+            ? failure.name
+            : '';
+          llmFailureSummary = [safeName, safeCode == null ? '' : String(safeCode)]
+            .filter((value) => /^[A-Za-z0-9_.-]{1,48}$/.test(value))
+            .join(' ');
+          if (TRACE) console.warn(`[dsh-trace] llm/retry${llmFailureSummary ? `: ${llmFailureSummary}` : ''}`);
+          break;
+        }
         case 'assistant/message': {
           // 快照语义：每个 step 产出一条「该时刻的完整消息」。
           // 必须按全量转发 + 前端替换；按增量转发会把多个快照拼接成重复文本。
@@ -828,7 +872,9 @@ async function doRun({ model, workspace, input, sessionId, dshHome, patchFile, o
     // 或 runtime 状态异常（实测首轮“你好”80s 后空 idle + runtime 崩溃）。superai 侧
     // 原本静默存一条空 agent 消息，用户只看到空回复。这里打 warn 便于定位。
     if (!finalText && stepCount === 0) {
-      console.warn(`[dsh] 回合异常结束：无文本、无工具调用，总耗时 ${Date.now() - tRun0}ms。可能是模型 API 空响应/超时或 runtime 状态异常。`);
+      const message = `模型请求重试后仍未返回回复${llmFailureSummary ? `（${llmFailureSummary}）` : ''}。请检查当前生效的模型服务。`;
+      console.warn(`[dsh] 回合异常结束：无文本、无工具调用，总耗时 ${Date.now() - tRun0}ms。`);
+      onEvent({ type: 'error', message });
     }
     onEvent({ type: 'done', text: finalText, steps: stepCount });
     // 每回合一行诊断日志（无需 TRACE）：总耗时 + 首事件延迟 + 步数。

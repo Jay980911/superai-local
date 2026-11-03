@@ -83,20 +83,31 @@ function readSettingsField(field) {
   if (!sp || !fs.existsSync(sp)) return '';
   try { const s = JSON.parse(fs.readFileSync(sp, 'utf-8')); return s[field] || ''; } catch { return ''; }
 }
-// 代理：env 没传到时从 settings 读，并用 undici ProxyAgent 显式设全局 dispatcher
-// （NODE_USE_ENV_PROXY 只在 Node 启动时生效，运行时设 process.env 无用，必须用 ProxyAgent）
+// 代理：env 没传到时从 settings 读。只有 Unsplash 等境外图库需要代理；
+// 生图/模型端点（常为国内直连可达地址）必须直连。
+// 注意：脚本被 agent 拉起时继承 NODE_USE_ENV_PROXY=1 + HTTPS_PROXY，全局 fetch
+// 会自动把所有请求打到代理上，代理软件没开就全部 fetch failed；
+// 唯一可靠做法是每个请求显式传 dispatcher（优先于 env 代理）。
+let directAgent = null;
+let proxyDispatcher = null;
 async function ensureProxy() {
-  let proxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || readSettingsField('proxy');
-  if (!proxy) return;
-  process.env.HTTPS_PROXY = proxy;
-  process.env.HTTP_PROXY = proxy;
+  const proxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || readSettingsField('proxy');
   try {
-    const { ProxyAgent, setGlobalDispatcher } = await import('undici');
-    setGlobalDispatcher(new ProxyAgent(proxy));
-    console.error('[image-gen] proxy via undici ProxyAgent:', proxy);
+    const u = await import('undici');
+    directAgent = new u.Agent();
+    if (proxy) {
+      proxyDispatcher = new u.ProxyAgent(proxy);
+      console.error('[image-gen] proxy dispatcher (仅境外图库):', proxy);
+    }
   } catch (e) {
-    console.error('[image-gen] 代理设置失败（undici 不可用）:', e.message);
+    console.error('[image-gen] undici 不可用（按默认直连）:', e.message);
   }
+}
+async function fetchDirect(url, init = {}) {
+  return directAgent ? fetch(url, { ...init, dispatcher: directAgent }) : fetch(url, init);
+}
+async function fetchProxied(url, init = {}) {
+  return proxyDispatcher ? fetch(url, { ...init, dispatcher: proxyDispatcher }) : fetchDirect(url, init);
 }
 
 // 从 prompt 抽图库搜索词：取第一个逗号前的主体，去掉风格后缀
@@ -121,7 +132,7 @@ function detectApi(baseUrl, imageModel) {
 async function genModelOpenAIImages(baseUrl, model, apiKey) {
   const url = baseUrl + '/images/generations';
   const body = { model, prompt: args.prompt, n: 1, size };
-  const r = await fetch(url, {
+  const r = await fetchDirect(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(apiKey ? { Authorization: 'Bearer ' + apiKey } : {}) },
     body: JSON.stringify(body),
@@ -135,7 +146,7 @@ async function genModelOpenAIImages(baseUrl, model, apiKey) {
   if (!item) throw new Error('大模型响应无 data：' + JSON.stringify(j).slice(0, 300));
   if (item.b64_json) return Buffer.from(item.b64_json, 'base64');
   if (item.url) {
-    const rr = await fetch(item.url);
+    const rr = await fetchDirect(item.url);
     if (!rr.ok) throw new Error('下载图片失败 HTTP ' + rr.status);
     return Buffer.from(await rr.arrayBuffer());
   }
@@ -150,7 +161,7 @@ async function genModelChatImages(baseUrl, model, apiKey) {
     session,
     messages: [{ role: 'user', content: [{ type: 'text', text: args.prompt }] }],
   };
-  const r = await fetch(baseUrl, {
+  const r = await fetchDirect(baseUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(apiKey ? { Authorization: 'Bearer ' + apiKey } : {}) },
     body: JSON.stringify(body),
@@ -190,7 +201,7 @@ async function genModelChatImages(baseUrl, model, apiKey) {
 }
 
 async function downloadImage(url) {
-  const rr = await fetch(url, { headers: { 'User-Agent': 'superai/1.0' } });
+  const rr = await fetchDirect(url, { headers: { 'User-Agent': 'superai/1.0' } });
   if (!rr.ok) throw new Error('下载生成图片失败 HTTP ' + rr.status + '：' + url.slice(0, 120));
   return Buffer.from(await rr.arrayBuffer());
 }
@@ -238,7 +249,7 @@ async function genStock() {
   }
   const query = `${kw} minimalism negative space simple background`;
   const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=5&orientation=landscape&content_filter=high`;
-  const r = await fetch(url, { headers: { Authorization: 'Client-ID ' + key } });
+  const r = await fetchProxied(url, { headers: { Authorization: 'Client-ID ' + key } });
   if (!r.ok) {
     let t = ''; try { t = await r.text(); } catch {}
     throw new Error(`Unsplash 搜索失败 HTTP ${r.status}${t ? '：' + t.slice(0, 200) : ''}`);
@@ -254,7 +265,7 @@ async function genStock() {
   if (!hit) throw new Error('Unsplash 无匹配结果：' + kw);
   const imgUrl = hit.urls && (hit.urls.regular || hit.urls.full || hit.urls.raw);
   if (!imgUrl) throw new Error('Unsplash 结果无图片 URL');
-  const rr = await fetch(imgUrl, { headers: { 'User-Agent': 'superai/1.0' } });
+  const rr = await fetchProxied(imgUrl, { headers: { 'User-Agent': 'superai/1.0' } });
   if (!rr.ok) throw new Error('下载图库图片失败 HTTP ' + rr.status);
   const buf = Buffer.from(await rr.arrayBuffer());
   fs.writeFileSync(outPath, buf);

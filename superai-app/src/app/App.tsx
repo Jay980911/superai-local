@@ -19,6 +19,7 @@ import {
   isElectron,
   getSettings,
   saveSettings,
+  syncLocalModelsToCloud,
   getDefaultWorkspace,
   onMenu,
   menuPopup,
@@ -47,9 +48,6 @@ import {
   getStoredUser,
   fetchMe,
   logout as cloudLogout,
-  listModels,
-  getSelectedCredentials,
-  getCredentials,
   type CloudUser,
 } from '../data/cloud';
 
@@ -73,6 +71,8 @@ export default function App() {
     return cached === 'mist' || cached === 'night' || cached === 'warm' ? cached : 'warm';
   });
   const themeTouchedRef = useRef(false);
+  const [userAvatarDataUrl, setUserAvatarDataUrl] = useState('');
+  const [assistantAvatarDataUrl, setAssistantAvatarDataUrl] = useState('');
   const [attachments, setAttachments] = useState<PickedFile[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -155,7 +155,11 @@ export default function App() {
     if (getStoredToken()) {
       fetchMe()
         .then(setCloudUser)
-        .catch(() => { cloudLogout(); setCloudUser(null); })
+        .catch(() => {
+          void (window as any).superai?.cloud?.model?.sync(null, [], null, null).catch(() => {});
+          cloudLogout();
+          setCloudUser(null);
+        })
         .finally(() => setAuthReady(true));
     } else {
       setAuthReady(true);
@@ -177,6 +181,7 @@ export default function App() {
     });
   }, []);
   const onLogoutCloud = useCallback(() => {
+    void (window as any).superai?.cloud?.model?.sync(null, [], null, null).catch(() => {});
     cloudLogout();
     setCloudUser(null);
     setActiveSession(null);
@@ -186,21 +191,26 @@ export default function App() {
     setMode('empty');
   }, []);
 
-  // 登录后/切换模型后：把云端 selected(含 apiKey) + 列表同步给主进程，agent:run 用云端模型发 LLM
-  // 同时：若云端有 kind=image 且已配 Key 的图像模型，拉其明文凭证一并同步，
-  // 主进程写入本地 settings.imageModel，image-gen 技能即可直接用（无需用户手动点“从云端同步”）
-  const syncCloudModel = useCallback(async () => {
-    if (!cloudUser) return;
-    try {
-      const [creds, models] = await Promise.all([getSelectedCredentials(), listModels()]);
-      let imgCred = null;
-      const img = models.find((m) => (m as any).kind === 'image' && m.hasKey);
-      if (img) {
-        try { imgCred = await getCredentials(img.id); } catch { /* 图像凭证拉取失败不阻塞对话模型同步 */ }
-      }
-      await (window as any).superai.cloud.model.sync(creds, models, imgCred);
-    } catch { /* 静默：回退本地 settings */ }
+  const syncLocalModelsToCloudNow = useCallback(async () => {
+    if (!cloudUser || !isElectron) throw new Error('本地模型同步仅支持已登录的桌面端');
+    const settings = await syncLocalModelsToCloud(cloudUser.id);
+    const cache = settings.cloudModelCache;
+    if (cache) {
+      const localCurrent = settings.models.find((model) => model.id === settings.currentModelId);
+      const cloudSelected = localCurrent?.cloudId
+        ? cache.models.find((model) => model.id === localCurrent.cloudId) || null
+        : null;
+      const imageModel = cache.models.find((model) => model.kind === 'image' && model.apiKey) || null;
+      await (window as any).superai.cloud.model.sync(cloudSelected, cache.models, imageModel, cloudUser.id);
+    }
+    return settings;
   }, [cloudUser]);
+
+  // 登录后自动推送本地模型；云端不可用时，本地配置仍可用。
+  const syncCloudModel = useCallback(async () => {
+    if (!cloudUser || !isElectron) return;
+    try { await syncLocalModelsToCloudNow(); } catch { /* 本地模型仍为权威配置 */ }
+  }, [cloudUser, syncLocalModelsToCloudNow]);
   useEffect(() => { syncCloudModel(); }, [cloudUser, syncCloudModel]);
 
   const startResize = useCallback(
@@ -246,6 +256,10 @@ export default function App() {
     localStorage.setItem('superai_ui_theme', theme);
     void saveSettings({ uiTheme: theme }).catch(() => showToast('主题已切换，但保存失败'));
   }, [showToast]);
+  const onAvatarSettingsChange = useCallback((patch: { userAvatarDataUrl?: string; assistantAvatarDataUrl?: string }) => {
+    if (patch.userAvatarDataUrl !== undefined) setUserAvatarDataUrl(patch.userAvatarDataUrl);
+    if (patch.assistantAvatarDataUrl !== undefined) setAssistantAvatarDataUrl(patch.assistantAvatarDataUrl);
+  }, []);
 
   // 加载工作目录的真实文件树
   const loadFileTree = useCallback(async (ws?: string) => {
@@ -296,6 +310,8 @@ export default function App() {
     });
     getSettings().then((st) => {
       setAutoExec(!!st.autoExec);
+      setUserAvatarDataUrl(st.userAvatarDataUrl || '');
+      setAssistantAvatarDataUrl(st.assistantAvatarDataUrl || '');
       if (!themeTouchedRef.current) {
         const cached = localStorage.getItem('superai_ui_theme');
         const savedTheme = cached === 'warm' || cached === 'mist' || cached === 'night' ? cached : st.uiTheme || 'warm';
@@ -919,6 +935,8 @@ export default function App() {
       : isRunningHere
       ? '正在处理…'
       : `${msgs.length} 条消息${autoExec ? ' · 自动执行已开启' : ''}`;
+  const chatUser = cloudUser ? { ...cloudUser, avatar: userAvatarDataUrl || cloudUser.avatar } : null;
+  const chatAssistantAvatar = assistantAvatarDataUrl || './avatar-superai.svg';
 
   if (!authReady) {
     return <Splash status="正在校验登录" />;
@@ -948,7 +966,7 @@ export default function App() {
           onTogglePin={onTogglePin}
           fileTree={fileTree}
           onOpenFile={onOpenFile}
-          cloudUser={cloudUser}
+          cloudUser={chatUser}
           onLogout={onLogoutCloud}
         />
 
@@ -979,7 +997,7 @@ export default function App() {
               ref={streamRef}
               onScroll={updateScrollState}
             >
-              <ChatStream messages={msgs} onAction={handleAction} registerMessageNode={registerMessageNode} user={cloudUser} assistantAvatar="/avatar-superai.svg" />
+              <ChatStream messages={msgs} onAction={handleAction} registerMessageNode={registerMessageNode} user={chatUser} assistantAvatar={chatAssistantAvatar} />
               {showJumpBottom && (
                 <button className="jump-bottom" onClick={() => scrollToBottom('smooth')} aria-label="回到最新消息">
                   <span className="jump-arrow">↓</span>
@@ -1071,7 +1089,7 @@ export default function App() {
         />
       </main>
 
-      {settingsOpen && <SettingsDialog initialTab={settingsTab} theme={uiTheme} onThemeChange={applyUiTheme} onClose={() => { setSettingsOpen(false); syncCloudModel(); }} />}
+      {settingsOpen && <SettingsDialog initialTab={settingsTab} theme={uiTheme} onThemeChange={applyUiTheme} userAvatar={chatUser?.avatar || null} onAvatarChange={onAvatarSettingsChange} onModelsChanged={syncCloudModel} onSyncModels={syncLocalModelsToCloudNow} onClose={() => { setSettingsOpen(false); syncCloudModel(); }} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );

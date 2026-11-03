@@ -1,5 +1,5 @@
 // 会话栏 268px · §6 左栏：品牌/搜索/会话分组/用户卡
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Session, FileEntry } from '../../types';
 import type { CloudUser } from '../../data/cloud';
 
@@ -37,20 +37,27 @@ export default function SessionSidebar({
   const [query, setQuery] = useState('');
   const [menuId, setMenuId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const ignoreRenameBlur = useRef(false);
   const MAX_COLLAPSED = 5;
-  // 点击菜单外任意位置关闭三点菜单
   useEffect(() => {
     if (!menuId) return;
-    const onDocClick = () => setMenuId(null);
-    document.addEventListener('click', onDocClick);
-    return () => document.removeEventListener('click', onDocClick);
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('.session-menu, .session-menu-trigger')) return;
+      setMenuId(null);
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
   }, [menuId]);
 
   const startRename = (s: Session) => {
+    ignoreRenameBlur.current = false;
     setRenamingId(s.id);
     setRenameDraft(s.title);
   };
   const commitRename = () => {
+    if (ignoreRenameBlur.current) return;
+    ignoreRenameBlur.current = true;
     const t = renameDraft.trim();
     if (t && renamingId) onRenameSession(renamingId, t);
     setRenamingId(null);
@@ -68,8 +75,8 @@ export default function SessionSidebar({
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               e.stopPropagation();
-              if (e.key === 'Enter') commitRename();
-              if (e.key === 'Escape') setRenamingId(null);
+              if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+              if (e.key === 'Escape') { ignoreRenameBlur.current = true; setRenamingId(null); }
             }}
             onBlur={commitRename}
           />
@@ -188,9 +195,15 @@ export default function SessionSidebar({
 
       <div className="userbar">
         <div className="avatar">
-          {cloudUser?.avatar
-            ? <img src={cloudUser.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }} />
-            : (cloudUser?.nickname?.[0] || cloudUser?.username?.[0] || 'U')}
+          <img
+            src={cloudUser?.avatar || './avatar-user-default.svg'}
+            alt=""
+            style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = './avatar-user-default.svg';
+            }}
+          />
         </div>
         <div>
           <div className="u1">{cloudUser?.nickname || cloudUser?.username || '未登录'}</div>

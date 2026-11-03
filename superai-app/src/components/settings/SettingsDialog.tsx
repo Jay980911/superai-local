@@ -1,6 +1,6 @@
 // SettingsDialog.tsx — 设置弹窗：分类导航（workbuddy 风格）
 // 模型配置（任意大模型增删改）/ 长期记忆 / 技能 / 通用偏好 / 关于
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   getSettings,
   saveSettings,
@@ -9,6 +9,7 @@ import {
   setCurrentModel,
   updateModel,
   testModel,
+  testImageModel,
   listMemory,
   saveMemory,
   searchMemory,
@@ -26,9 +27,14 @@ import {
   type ModelConfig,
   type MemoryFact,
   type Skill,
+  type DshBundle,
+  listBundles,
+  installBundle,
+  removeBundle,
+  setBundleEnabled,
 } from '../../data/api';
 
-export type Tab = 'personalization' | 'models' | 'memory' | 'skills' | 'general' | 'about';
+export type Tab = 'personalization' | 'models' | 'memory' | 'skills' | 'plugins' | 'general' | 'about';
 
 /** API 协议的中文短标签（列表展示用） */
 const API_LABELS: Record<string, string> = {
@@ -37,7 +43,7 @@ const API_LABELS: Record<string, string> = {
   'anthropic-messages': 'Anthropic',
 };
 
-export default function SettingsDialog({ onClose, initialTab = 'models', theme, onThemeChange }: { onClose: () => void; initialTab?: Tab; theme: UiTheme; onThemeChange: (theme: UiTheme) => void }) {
+export default function SettingsDialog({ onClose, initialTab = 'models', theme, onThemeChange, userAvatar, onAvatarChange, onModelsChanged, onSyncModels }: { onClose: () => void; initialTab?: Tab; theme: UiTheme; onThemeChange: (theme: UiTheme) => void; userAvatar: string | null; onAvatarChange: (patch: { userAvatarDataUrl?: string; assistantAvatarDataUrl?: string }) => void; onModelsChanged?: () => Promise<void>; onSyncModels?: () => Promise<Settings> }) {
   const [s, setS] = useState<Settings | null>(null);
   const [tab, setTab] = useState<Tab>(initialTab);
   const [editing, setEditing] = useState<string | null>(null); // 正在编辑的模型 id
@@ -62,10 +68,18 @@ export default function SettingsDialog({ onClose, initialTab = 'models', theme, 
     setTimeout(() => setToast(null), 1600);
   };
 
+  const saveAvatarSettings = async (patch: { userAvatarDataUrl?: string; assistantAvatarDataUrl?: string }) => {
+    const fresh = await saveSettings(patch);
+    setS(fresh);
+    onAvatarChange(patch);
+    flash('头像已保存');
+  };
+
   // 选为当前模型
   const onSelect = async (id: string) => {
     const next = await setCurrentModel(id);
     setS(next);
+    await onModelsChanged?.();
     flash('已切换');
   };
 
@@ -75,6 +89,7 @@ export default function SettingsDialog({ onClose, initialTab = 'models', theme, 
     if (!r.ok) { flash(r.error || '删除失败'); return; }
     const fresh = await getSettings();
     setS(fresh);
+    await onModelsChanged?.();
     flash('已删除');
   };
 
@@ -84,6 +99,7 @@ export default function SettingsDialog({ onClose, initialTab = 'models', theme, 
     const fresh = await getSettings();
     setS(fresh);
     setEditing(null);
+    await onModelsChanged?.();
     flash('已保存');
   };
 
@@ -93,6 +109,7 @@ export default function SettingsDialog({ onClose, initialTab = 'models', theme, 
     const fresh = await getSettings();
     setS(fresh);
     setAdding(false);
+    await onModelsChanged?.();
     flash('已添加');
   };
 
@@ -106,17 +123,21 @@ export default function SettingsDialog({ onClose, initialTab = 'models', theme, 
         <div className="dialog-body settings-body">
           {/* 左侧分类导航 */}
           <nav className="settings-nav">
+            <div className="nav-group-label">设置</div>
             <button className={tab === 'personalization' ? 'on' : ''} onClick={() => setTab('personalization')}>个性化</button>
+            <button className={tab === 'general' ? 'on' : ''} onClick={() => setTab('general')}>通用偏好</button>
+            <div className="nav-group-label">功能</div>
             <button className={tab === 'models' ? 'on' : ''} onClick={() => setTab('models')}>模型配置</button>
             <button className={tab === 'memory' ? 'on' : ''} onClick={() => setTab('memory')}>长期记忆</button>
             <button className={tab === 'skills' ? 'on' : ''} onClick={() => setTab('skills')}>技能</button>
-            <button className={tab === 'general' ? 'on' : ''} onClick={() => setTab('general')}>通用偏好</button>
+            <button className={tab === 'plugins' ? 'on' : ''} onClick={() => setTab('plugins')}>插件</button>
+            <div className="nav-group-label">关于</div>
             <button className={tab === 'about' ? 'on' : ''} onClick={() => setTab('about')}>关于</button>
           </nav>
 
           {/* 右侧内容 */}
           <div className="settings-content">
-            {tab === 'personalization' && <PersonalizationTab theme={theme} onThemeChange={onThemeChange} onToast={flash} />}
+            {tab === 'personalization' && <PersonalizationTab theme={theme} onThemeChange={onThemeChange} userAvatar={s.userAvatarDataUrl || userAvatar || './avatar-user-default.svg'} assistantAvatar={s.assistantAvatarDataUrl || './avatar-superai.svg'} onAvatarChange={saveAvatarSettings} onToast={flash} />}
 
             {tab === 'models' && (
               <ModelsTab
@@ -131,12 +152,15 @@ export default function SettingsDialog({ onClose, initialTab = 'models', theme, 
                 setAdding={setAdding}
                 onToast={flash}
                 setS={setS}
+                onSyncModels={onSyncModels}
               />
             )}
 
             {tab === 'memory' && <MemoryTab onToast={flash} />}
 
             {tab === 'skills' && <SkillsTab onToast={flash} />}
+
+            {tab === 'plugins' && <PluginsTab onToast={flash} />}
 
             {tab === 'general' && (
               <GeneralTab s={s} setS={setS} onToast={flash} />
@@ -158,15 +182,64 @@ export default function SettingsDialog({ onClose, initialTab = 'models', theme, 
   );
 }
 
+async function resizeAvatar(file: File): Promise<string> {
+  if (!file.type.startsWith('image/')) throw new Error('请选择图片文件');
+  if (file.size > 8 * 1024 * 1024) throw new Error('头像图片不能超过 8 MB');
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.src = objectUrl;
+    await image.decode();
+    const side = 256;
+    const scale = Math.max(side / image.naturalWidth, side / image.naturalHeight);
+    const width = image.naturalWidth * scale;
+    const height = image.naturalHeight * scale;
+    const canvas = document.createElement('canvas');
+    canvas.width = side;
+    canvas.height = side;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('图片处理失败');
+    context.drawImage(image, (side - width) / 2, (side - height) / 2, width, height);
+    return canvas.toDataURL('image/png');
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 function PersonalizationTab({
   theme,
   onThemeChange,
+  userAvatar,
+  assistantAvatar,
+  onAvatarChange,
   onToast,
 }: {
   theme: UiTheme;
   onThemeChange: (theme: UiTheme) => void;
+  userAvatar: string;
+  assistantAvatar: string;
+  onAvatarChange: (patch: { userAvatarDataUrl?: string; assistantAvatarDataUrl?: string }) => Promise<void>;
   onToast: (message: string) => void;
 }) {
+  const userAvatarInput = useRef<HTMLInputElement>(null);
+  const assistantAvatarInput = useRef<HTMLInputElement>(null);
+  const [avatarBusy, setAvatarBusy] = useState<'user' | 'assistant' | null>(null);
+
+  const selectAvatar = async (field: 'userAvatarDataUrl' | 'assistantAvatarDataUrl', file?: File) => {
+    if (!file) return;
+    setAvatarBusy(field === 'userAvatarDataUrl' ? 'user' : 'assistant');
+    try {
+      const dataUrl = await resizeAvatar(file);
+      await onAvatarChange({ [field]: dataUrl });
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : '头像图片读取失败');
+    } finally {
+      setAvatarBusy(null);
+      if (field === 'userAvatarDataUrl' && userAvatarInput.current) userAvatarInput.current.value = '';
+      if (field === 'assistantAvatarDataUrl' && assistantAvatarInput.current) assistantAvatarInput.current.value = '';
+    }
+  };
+
   const themes: Array<{ id: UiTheme; name: string; detail: string }> = [
     { id: 'warm', name: '暖纸', detail: '系统默认 · 暖白与柔灰' },
     { id: 'mist', name: '雾灰', detail: '冷中性 · 清晰克制' },
@@ -213,6 +286,54 @@ function PersonalizationTab({
         <span>工作台</span>
         <span>设置与市场</span>
       </div>
+      <div className="personalization-divider" />
+      <div className="avatar-settings">
+        <div className="tab-head">
+          <h3>头像图片</h3>
+          <span className="hint" style={{ margin: 0 }}>方形裁切 · 本地保存</span>
+        </div>
+        <div className="avatar-setting-row">
+          <img src={userAvatar} alt="用户头像预览" />
+          <div className="avatar-setting-copy">
+            <strong>用户头像</strong>
+            <small>默认跟随账户头像，可设置本机覆盖图</small>
+          </div>
+          <input
+            ref={userAvatarInput}
+            className="avatar-file-input"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            onChange={(e) => { void selectAvatar('userAvatarDataUrl', e.currentTarget.files?.[0]); }}
+          />
+          <button className="btn small" type="button" disabled={avatarBusy === 'user'} onClick={() => userAvatarInput.current?.click()}>
+            {avatarBusy === 'user' ? '处理中…' : '选择图片'}
+          </button>
+          <button className="btn small" type="button" title="恢复账户头像" onClick={() => { void onAvatarChange({ userAvatarDataUrl: '' }).catch(() => onToast('头像保存失败')); }}>
+            账户头像
+          </button>
+        </div>
+        <div className="avatar-setting-row">
+          <img src={assistantAvatar} alt="AI 头像预览" />
+          <div className="avatar-setting-copy">
+            <strong>AI 角色头像</strong>
+            <small>当前通用助手使用的图片头像</small>
+          </div>
+          <input
+            ref={assistantAvatarInput}
+            className="avatar-file-input"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            onChange={(e) => { void selectAvatar('assistantAvatarDataUrl', e.currentTarget.files?.[0]); }}
+          />
+          <button className="btn small" type="button" disabled={avatarBusy === 'assistant'} onClick={() => assistantAvatarInput.current?.click()}>
+            {avatarBusy === 'assistant' ? '处理中…' : '选择图片'}
+          </button>
+          <button className="btn small" type="button" title="恢复 SuperAI 默认头像" onClick={() => { void onAvatarChange({ assistantAvatarDataUrl: '' }).catch(() => onToast('头像保存失败')); }}>
+            默认
+          </button>
+        </div>
+        <p className="hint" style={{ margin: 0 }}>支持 PNG、JPG、WebP、GIF，最多 8 MB；保存时自动居中裁切为头像尺寸。云端账户头像不上传或修改。</p>
+      </div>
     </div>
   );
 }
@@ -256,43 +377,59 @@ function GeneralTab({
   };
 
   return (
-    <div className="field-group">
-      <div className="field">
-        <label>默认工作目录</label>
-        <p className="hint">新建对话的默认读写范围；每个会话也可以在顶部标题栏单独更改。</p>
-        <div className="dir-pick" onClick={onPick} title="点击更改默认工作目录" style={{ opacity: picking ? 0.6 : 1 }}>
-          📁 {ws || '未选择'} ▾
+    <>
+      <div className="settings-section">
+        <div className="settings-section-head"><h3>工作目录</h3></div>
+        <div className="settings-section-body">
+          <div className="settings-row">
+            <div className="settings-row-info">
+              <div className="settings-row-label">默认工作目录</div>
+              <div className="settings-row-desc">新建对话的默认读写范围；每个会话也可以在顶部标题栏单独更改。</div>
+            </div>
+            <div className="settings-row-control">
+              <div className="dir-pick" onClick={onPick} title="点击更改默认工作目录" style={{ opacity: picking ? 0.6 : 1, marginTop: 0 }}>
+                📁 {ws || '未选择'} ▾
+              </div>
+            </div>
+          </div>
+          <div className="settings-row">
+            <div className="settings-row-info">
+              <div className="settings-row-label">恢复默认</div>
+              <div className="settings-row-desc">仅清空应用默认工作目录的自定义覆盖，不影响各会话已单独设置的工作目录。</div>
+            </div>
+            <div className="settings-row-control">
+              <button type="button" className="btn small" onClick={onReset}>恢复安装目录默认</button>
+            </div>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={onReset}
-          title="仅清空应用默认工作目录的自定义覆盖，不影响各会话已单独设置的工作目录"
-          style={{ marginTop: 8, background: 'none', border: 'none', color: 'var(--ink-3)', fontSize: 11, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
-        >恢复安装目录默认</button>
       </div>
-      <div className="field">
-        <label>自动执行</label>
-        <label className="toggle-row">
-          <input
-            type="checkbox"
-            checked={s.autoExec}
-            onChange={(e) => setS({ ...s, autoExec: e.target.checked })}
-          />
-          <span>工具调用自动执行</span>
-        </label>
-        <p className="hint">
-          当前引擎版本（dsh 0.2.1-rc.3）暂无审批传输通道，此开关暂不生效——
-          工具调用会直接执行（等同开启）。等官方发布审批能力后，关闭此开关将弹出逐次确认。
-        </p>
+      <div className="settings-section">
+        <div className="settings-section-head"><h3>工具执行</h3></div>
+        <div className="settings-section-body">
+          <div className="settings-row">
+            <div className="settings-row-info">
+              <div className="settings-row-label">自动执行</div>
+              <div className="settings-row-desc">当前引擎版本（dsh 0.2.1-rc.3）暂无审批传输通道，此开关暂不生效——工具调用会直接执行（等同开启）。</div>
+            </div>
+            <div className="settings-row-control">
+              <label className="toggle-row">
+                <input type="checkbox" checked={s.autoExec} onChange={(e) => setS({ ...s, autoExec: e.target.checked })} />
+                <span>工具调用自动执行</span>
+              </label>
+            </div>
+          </div>
+        </div>
       </div>
-      <button className="btn pri" onClick={async () => { await saveSettings({ autoExec: s.autoExec }); onToast('已保存'); }}>保存</button>
-    </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button className="btn pri" onClick={async () => { await saveSettings({ autoExec: s.autoExec }); onToast('已保存'); }}>保存</button>
+      </div>
+    </>
   );
 }
 
 // ===== 模型配置标签页 =====
 function ModelsTab({
-  s, editing, adding, onSelect, onDelete, onSaveModel, onAdd, setEditing, setAdding, onToast, setS,
+  s, editing, adding, onSelect, onDelete, onSaveModel, onAdd, setEditing, setAdding, onToast, setS, onSyncModels,
 }: {
   s: Settings;
   editing: string | null;
@@ -305,34 +442,62 @@ function ModelsTab({
   setAdding: (v: boolean) => void;
   onToast: (t: string) => void;
   setS: (s: Settings) => void;
+  onSyncModels?: () => Promise<Settings>;
 }) {
+  const [syncing, setSyncing] = useState(false);
+  const syncModels = async () => {
+    if (!onSyncModels) return;
+    setSyncing(true);
+    try {
+      const fresh = await onSyncModels();
+      setS(fresh);
+      onToast('本地模型已同步到云端');
+    } catch {
+      onToast('同步失败，请检查云端连接');
+    } finally {
+      setSyncing(false);
+    }
+  };
   return (
     <div className="models-tab">
-      <div className="tab-head">
-        <h3>AI 模型</h3>
-        <button className="btn small" onClick={() => setAdding(!adding)}>＋ 添加模型</button>
+      <div className="tab-head models-tab-head">
+        <div className="models-heading">
+          <h3>本地模型</h3>
+          <p className="hint">本机 settings.json 是模型配置的权威来源；修改后同步到云端。</p>
+        </div>
+        <div className="row-actions">
+          {isLoggedIn() && onSyncModels && <button className="btn small" disabled={syncing} onClick={() => { void syncModels(); }}>{syncing ? '同步中…' : '同步到云端'}</button>}
+          <button className="btn small" onClick={() => setAdding(!adding)}>＋ 添加模型</button>
+        </div>
       </div>
-      <p className="hint">不内置任何模型——任意大模型都可以自己添加：OpenAI 兼容 / Responses / Anthropic 接口均可。选中的模型高亮显示。</p>
 
       {adding && <AddModelForm onAdd={onAdd} onCancel={() => setAdding(false)} />}
 
-      <div className="model-list">
-        {s.models.map((m) => (
-          <ModelRow
-            key={m.id}
-            m={m}
-            isCurrent={s.currentModelId === m.id}
-            editing={editing === m.id}
-            onSelect={onSelect}
-            onDelete={onDelete}
-            onSaveModel={onSaveModel}
-            setEditing={setEditing}
-          />
-        ))}
-        {s.models.length === 0 && <p className="hint">还没有模型，点右上「添加自定义」。</p>}
+      <div className="settings-section">
+        <div className="settings-section-body">
+          <div className="model-list">
+            {s.models.map((m) => (
+              <ModelRow
+                key={m.id}
+                m={m}
+                isCurrent={s.currentModelId === m.id}
+                editing={editing === m.id}
+                onSelect={onSelect}
+                onDelete={onDelete}
+                onSaveModel={onSaveModel}
+                setEditing={setEditing}
+              />
+            ))}
+            {s.models.length === 0 && <p className="hint">还没有模型，点右上「添加模型」。</p>}
+          </div>
+        </div>
       </div>
 
-      <ImageModelBlock s={s} onToast={onToast} setS={setS} />
+      <div className="settings-section">
+        <div className="settings-section-body">
+          <ImageModelBlock s={s} onToast={onToast} setS={setS} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -360,7 +525,7 @@ function ImageModelBlock({ s, onToast, setS }: { s: Settings; onToast: (t: strin
   };
   const onTest = async () => {
     if (!baseUrl || !model) { onToast('baseUrl 和 model 不能为空'); return; }
-    const r = await testModel({ baseUrl, apiKey, model, api: 'openai-completions' });
+    const r = await testImageModel({ baseUrl, apiKey, model });
     onToast(r.ok ? '✅ 连接成功' : '❌ ' + r.detail);
   };
   const onClear = async () => {
@@ -456,16 +621,16 @@ function ModelRow({
         <span className={isCurrent ? 'dot on' : 'dot'} />
       </button>
       <div className="model-info">
-        <div className="model-name">{m.name}</div>
+        <div className="model-name">{m.name}{m.isDefault ? <span className="model-badge">默认</span> : ''}</div>
         <div className="model-meta">
           {m.model} · {API_LABELS[m.api] ?? m.api} · {m.baseUrl}{m.hasKey ? ' · 🔑' : ''}
         </div>
         {result && <div className="model-test-result" style={{ fontSize: 11, color: result.startsWith('✅') ? 'var(--green)' : 'var(--danger)', marginTop: 4 }}>{result}</div>}
       </div>
-      <div className="row-actions">
-        <button className="btn small" onClick={onTest} disabled={testing}>{testing ? '测试中…' : '测试'}</button>
-        <button className="btn small" onClick={() => setEditing(m.id)}>编辑</button>
-        <button className="btn small danger" onClick={() => onDelete(m.id)}>删除</button>
+      <div className="row-actions model-actions">
+        <button className="icon-action" onClick={onTest} disabled={testing} title={testing ? '测试中…' : '测试连接'}>{testing ? '⋯' : '⚡'}</button>
+        <button className="icon-action" onClick={() => setEditing(m.id)} title="编辑">✎</button>
+        <button className="icon-action danger" onClick={() => onDelete(m.id)} title="删除">🗑</button>
       </div>
     </div>
   );
@@ -686,6 +851,110 @@ function SkillsTab({ onToast }: { onToast: (t: string) => void }) {
             {active?.name === s.name && (
               <pre className="skill-body">{body}</pre>
             )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ===== dsh 插件标签页 =====
+function PluginsTab({ onToast }: { onToast: (t: string) => void }) {
+  const [bundles, setBundles] = useState<DshBundle[]>([]);
+  const [installing, setInstalling] = useState(false);
+  const [spec, setSpec] = useState('');
+  const [busyName, setBusyName] = useState<string | null>(null);
+
+  const reload = useCallback(async () => {
+    setBundles(await listBundles());
+  }, []);
+  useEffect(() => { reload(); }, [reload]);
+
+  const onInstall = async () => {
+    const s = spec.trim();
+    if (!s) return;
+    setInstalling(true);
+    const r = await installBundle(s);
+    setInstalling(false);
+    if (r.ok) { setSpec(''); await reload(); onToast('已安装插件'); }
+    else onToast('安装失败：' + (r.stderr || r.stdout || '未知错误').slice(0, 120));
+  };
+
+  const onRemove = async (name: string) => {
+    setBusyName(name);
+    const r = await removeBundle(name);
+    setBusyName(null);
+    if (r.ok) { await reload(); onToast('已卸载'); }
+    else onToast('卸载失败：' + (r.stderr || r.stdout || '未知错误').slice(0, 120));
+  };
+
+  const onToggle = async (name: string, enabled: boolean) => {
+    setBusyName(name);
+    await setBundleEnabled(name, enabled);
+    setBusyName(null);
+    await reload();
+    onToast(enabled ? '已启用' : '已停用');
+  };
+
+  return (
+    <div className="plugins-tab">
+      <div className="tab-head">
+        <h3>dsh 插件</h3>
+        <span className="hint" style={{ margin: 0 }}>{bundles.length} 个 bundle</span>
+      </div>
+      <p className="hint">
+        插件由 dsh（deepseek-harness）插件管理器管理，安装到 SDK profile。
+        插件是可执行代码，安装后以主机权限运行。安装前请确认来源。
+      </p>
+
+      <div className="add-model-form" style={{ marginTop: 10 }}>
+        <div className="memory-add-row">
+          <input
+            className="input"
+            placeholder="包名 / git 地址 / 本地路径（如 @acme/dsh-sidebar）"
+            value={spec}
+            onChange={(e) => setSpec(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') onInstall(); }}
+            disabled={installing}
+          />
+          <button className="btn small pri" onClick={onInstall} disabled={installing || !spec.trim()}>
+            {installing ? '安装中…' : '安装'}
+          </button>
+        </div>
+      </div>
+
+      <div className="model-list" style={{ marginTop: 14 }}>
+        {bundles.length === 0 && <p className="hint">还没有安装插件。</p>}
+        {bundles.map((b) => (
+          <div key={b.name} className={`model-row ${b.enabled ? 'current' : ''}`}>
+            <div className="model-info">
+              <div className="model-name">
+                {b.name}
+                {b.isOfficial && <span className="tag-builtin" style={{ marginLeft: 6 }}>DSH 内置</span>}
+                {b.version && <span className="tag-builtin" style={{ marginLeft: 4 }}>{b.version}</span>}
+              </div>
+              <div className="model-meta">{b.enabled ? '已启用' : '已停用'}</div>
+            </div>
+            <div className="row-actions">
+              {!b.isOfficial && (
+                <button
+                  className="btn small"
+                  onClick={() => onToggle(b.name, !b.enabled)}
+                  disabled={busyName === b.name}
+                >
+                  {b.enabled ? '停用' : '启用'}
+                </button>
+              )}
+              {!b.isOfficial && (
+                <button
+                  className="btn small danger"
+                  onClick={() => onRemove(b.name)}
+                  disabled={busyName === b.name}
+                >
+                  卸载
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>

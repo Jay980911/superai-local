@@ -34,6 +34,12 @@ contextBridge.exposeInMainWorld('superai', {
     setCurrent: (id) => ipcRenderer.invoke('models:setCurrent', id),
     update: (id, patch) => ipcRenderer.invoke('models:update', id, patch),
     test: (cfg) => ipcRenderer.invoke('models:test', cfg),
+    get: (id) => ipcRenderer.invoke('models:get', id),
+  },
+
+  // 图像生成模型测试（独立协议，不复用 models:test）
+  image: {
+    test: (cfg) => ipcRenderer.invoke('image:test', cfg),
   },
 
   // Agent
@@ -102,13 +108,21 @@ contextBridge.exposeInMainWorld('superai', {
     dir: () => ipcRenderer.invoke('skills:dir'),
   },
 
+  // dsh 插件管理
+  plugins: {
+    list: () => ipcRenderer.invoke('plugins:list'),
+    install: (spec, registry) => ipcRenderer.invoke('plugins:install', spec, registry),
+    remove: (name) => ipcRenderer.invoke('plugins:remove', name),
+    setEnabled: (name, enabled) => ipcRenderer.invoke('plugins:setEnabled', name, enabled),
+  },
+
   // 云端 API 代理（绕过渲染进程 mixed content 限制，走主进程 fetch）
   cloud: {
     api: (path, init) => ipcRenderer.invoke('cloud:api', path, init),
     model: {
       // 把云端 selected(含 apiKey)+列表同步给主进程，agent:run 用云端模型发 LLM；
       // 第三个参数 imageCredentials：云端图像模型明文凭证，主进程写入 settings.imageModel
-      sync: (credentials, models, imageCredentials) => ipcRenderer.invoke('cloud:model:sync', credentials, models, imageCredentials),
+      sync: (credentials, models, imageCredentials, accountId) => ipcRenderer.invoke('cloud:model:sync', credentials, models, imageCredentials, accountId),
     },
   },
 });

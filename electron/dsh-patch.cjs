@@ -57,6 +57,23 @@ function buildPatchYaml(models, opts = {}) {
     lines.push('        models:');
     lines.push(`          - id: ${yamlString(m.model)}`);
     lines.push(`            name: ${yamlString(m.model)}`);
+    // 新版 OpenAI 模型（gpt-4o/gpt-5/gpt-6 等）要求 max_completion_tokens，
+    // 不接受旧的 max_tokens。按模型名自动判断。
+    const needsCompletionTokens = /^(gpt-[456]|o[134]|o[134]-|chatgpt)/i.test(m.model);
+    if (needsCompletionTokens) {
+      lines.push('            compat:');
+      lines.push('              maxTokensField: "max_completion_tokens"');
+      // 多数 OpenAI 兼容网关（Azure 转发类）在 /chat/completions 上不允许
+      // 「function tools + 非 none 的 reasoning_effort」并存，且缺省按非 none
+      // 处理——不带参数也 400。必须显式发送 reasoning_effort: "none"。
+      // pi-ai 的 off 映射：默认档位（不思考）时发送 off 的值；
+      // 至少要声明一个非 off 档位，否则 schema 拒绝。
+      lines.push('            reasoningEfforts:');
+      lines.push('              off: "none"');
+      lines.push('              low: "low"');
+      lines.push('              medium: "medium"');
+      lines.push('              high: "high"');
+    }
   }
 
   // 技能发现范围：默认只扫 superai 自己的 data/skills（includeDefaultRoots=false），

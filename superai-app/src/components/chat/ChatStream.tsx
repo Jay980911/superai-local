@@ -9,8 +9,8 @@ import Markdown from './Markdown';
 const suggestions = isElectron ? getSuggestions() : mockSuggestions;
 import { Check, Clock, FileTypeIcon, Folder, Sparkle, Chart } from '../icons/Icon';
 
-const DEFAULT_USER_AVATAR = '/avatar-user-default.svg';
-const DEFAULT_ASSISTANT_AVATAR = '/avatar-superai.svg';
+const DEFAULT_USER_AVATAR = './avatar-user-default.svg';
+const DEFAULT_ASSISTANT_AVATAR = './avatar-superai.svg';
 
 function MessageAvatar({ src, fallback, alt }: { src?: string | null; fallback: string; alt: string }) {
   const [failed, setFailed] = useState(false);

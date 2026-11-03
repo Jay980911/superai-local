@@ -34,8 +34,11 @@ function defaults() {
   return {
     models: [],
     currentModelId: '',   // 空 = 未选择，用户必须选一个
+    cloudModelCache: null,
     autoExec: true,
     uiTheme: 'warm',          // 全局主题，同时作用于加载页、登录页与工作台
+    userAvatarDataUrl: '',    // 本地头像覆盖，空时沿用云端账户头像
+    assistantAvatarDataUrl: '', // 本地 AI 头像，空时使用内置图片
     scanGlobalSkills: false,  // 默认只扫 superai data/skills；true=同时扫 ~/.agents/skills 等 dsh 默认根（需用户显式同意）
     workspace: '',        // 全局默认工作目录覆盖（用户在无活动会话时选的目录）；
                           // 空 = 用安装目录/workspace。每个会话可再单独覆盖。
@@ -85,6 +88,13 @@ function ensureDataDirs() {
  */
 function migrate(s) {
   if (!['warm', 'mist', 'night'].includes(s.uiTheme)) s.uiTheme = 'warm';
+  if (typeof s.userAvatarDataUrl !== 'string') s.userAvatarDataUrl = '';
+  if (typeof s.assistantAvatarDataUrl !== 'string') s.assistantAvatarDataUrl = '';
+  if (!s.cloudModelCache || typeof s.cloudModelCache !== 'object' || Array.isArray(s.cloudModelCache) || typeof s.cloudModelCache.accountId !== 'string' || !Array.isArray(s.cloudModelCache.models)) {
+    s.cloudModelCache = null;
+  } else if (typeof s.cloudModelCache.currentModelId !== 'string') {
+    s.cloudModelCache.currentModelId = '';
+  }
   if (!Array.isArray(s.models)) { s.models = []; return s; }
   // workspace 全局默认目录：只接受非空字符串，其他值收敛为空
   if (typeof s.workspace !== 'string') s.workspace = '';
@@ -139,6 +149,12 @@ function getCurrentModel() {
   return s.models.find((m) => m.id === s.currentModelId) || null;
 }
 
+/** 获取单个模型配置 */
+function getModel(id) {
+  const s = load();
+  return s.models.find((x) => x.id === id) || null;
+}
+
 /** 添加模型（任意大模型，字段齐才能用） */
 function addModel(model) {
   const s = load();
@@ -163,7 +179,9 @@ function addModel(model) {
 function removeModel(id) {
   const s = load();
   s.models = s.models.filter((x) => x.id !== id);
-  if (s.currentModelId === id) s.currentModelId = '';
+  if (s.currentModelId === id) {
+    s.currentModelId = s.models.find((model) => model.kind !== 'image')?.id || '';
+  }
   save(s);
   return { ok: true };
 }
@@ -187,6 +205,8 @@ function updateModel(id, patch) {
   Object.assign(m, next);
   save(s);
   return m;
+  save(s);
+  return m;
 }
 
 /** 旧调用兼容：已无内置预设，返回空 */
@@ -196,6 +216,6 @@ function getPresets() {
 
 module.exports = {
   load, save, defaults, getPresets, ensureDataDirs, defaultWorkspace, appDataDir,
-  getCurrentModel, addModel, removeModel, setCurrentModel, updateModel,
+  getCurrentModel, addModel, removeModel, setCurrentModel, updateModel, getModel,
   API_TYPES,
 };

@@ -41,7 +41,7 @@ export default function ChatHeader({
       <button className="chip dir" type="button" title="更改工作目录" aria-label={`工作目录：${ws}，点击更改`} onClick={onPickWorkspace}>
         <Folder size={14} />
         <span className="workspace-name">{ws}</span>
-        <span className="workspace-chevron" aria-hidden="true">⌄</span>
+        <span className="workspace-chevron" aria-hidden="true" />
       </button>
       <button
         className="icon-btn right-open"

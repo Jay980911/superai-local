@@ -35,18 +35,33 @@ export interface ModelConfig {
   apiKey: string;
   model: string;
   api: ApiType;
-  hasKey?: boolean;  // 云端：是否已配置 apiKey（列表不返回明文，仅标记）
-  kind?: 'chat' | 'image';  // 用途：对话 / 图像生成（云端字段，image-gen 同步用）
+  hasKey?: boolean;
+  isDefault?: boolean;
+  kind?: 'chat' | 'image';
+  /** 云端模型 ID；本地模型编辑后用于同步到云端 */
+  cloudId?: string;
 }
 
 export type UiTheme = 'warm' | 'mist' | 'night';
 
+export interface CloudModelCache {
+  accountId: string;
+  models: ModelConfig[];
+  currentModelId: string;
+  updatedAt: number;
+}
+
 export interface Settings {
   models: ModelConfig[];
   currentModelId: string;
+  cloudModelCache?: CloudModelCache | null;
   autoExec: boolean;
   /** 应用于加载页、登录页和全部应用界面的统一主题。 */
   uiTheme?: UiTheme;
+  /** 本地用户头像覆盖图（data URL）；空时沿用账户资料头像。 */
+  userAvatarDataUrl?: string;
+  /** SuperAI 助手头像（data URL）；空时使用应用默认图片。 */
+  assistantAvatarDataUrl?: string;
   /** 是否扫描全局技能目录（~/.agents/skills 等 dsh 默认根）。默认 false：只扫 superai data/skills。 */
   scanGlobalSkills?: boolean;
   /** 全局默认工作目录覆盖（用户在无活动会话时选的目录）；空 = 安装目录/workspace */
@@ -92,29 +107,106 @@ export interface Skill {
 // 云端模型 → 本地 ModelConfig（列表不返回 apiKey 明文，用 hasKey 标记）
 function cloudToModel(m: CloudModel): ModelConfig {
   return {
-    id: String(m.id), name: m.name, baseUrl: m.baseUrl || '',
-    apiKey: '', hasKey: m.hasKey,
+    id: String(m.id), cloudId: String(m.id), name: m.name, baseUrl: m.baseUrl || '',
+    apiKey: '', hasKey: m.hasKey, isDefault: m.isDefault,
     model: m.modelName, api: (m.apiType as ApiType) || 'openai-completions',
     kind: m.kind || 'chat',
   };
 }
 
-export async function getSettings(): Promise<Settings> {
-  const local: Settings = isElectron ? await (window as any).superai.getSettings() : { models: [], currentModelId: '', autoExec: true, uiTheme: 'warm' };
-  // 登录后：models + currentModelId 从云端取，autoExec/workspace 等仍用本地
-  if (getStoredToken()) {
+export async function syncCloudModelCache(accountId: string | number): Promise<CloudModelCache> {
+  const ownerId = String(accountId);
+  const [cloudModels, selected] = await Promise.all([listModels(), getSelectedCredentials()]);
+  const models = await Promise.all(cloudModels.map(async (cloudModel) => {
+    const model = cloudToModel(cloudModel);
+    if (!cloudModel.hasKey) return model;
     try {
-      const [cms, sel] = await Promise.all([listModels(), getSelectedCredentials()]);
-      const models = cms.map(cloudToModel);
-      return { ...local, models, currentModelId: sel?.id ? String(sel.id) : '' };
-    } catch { /* 云端失败回退本地 settings */ }
+      const credentials = await getCredentials(cloudModel.id);
+      return {
+        ...model,
+        baseUrl: credentials.baseUrl || model.baseUrl,
+        apiKey: credentials.apiKey || '',
+        model: credentials.modelName || model.model,
+        api: (credentials.apiType as ApiType) || model.api,
+      };
+    } catch {
+      return model;
+    }
+  }));
+  const currentModelId = selected?.id == null ? '' : String(selected.id);
+  if (selected && currentModelId) {
+    const index = models.findIndex((model) => model.id === currentModelId);
+    const previous = index >= 0 ? models[index] : undefined;
+    const selectedModel: ModelConfig = {
+      ...previous,
+      id: currentModelId,
+      name: selected.name || previous?.name || '',
+      baseUrl: selected.baseUrl || previous?.baseUrl || '',
+      apiKey: selected.apiKey || previous?.apiKey || '',
+      model: selected.modelName || previous?.model || '',
+      api: (selected.apiType as ApiType) || previous?.api || 'openai-completions',
+      hasKey: !!(selected.apiKey || previous?.apiKey || previous?.hasKey),
+      kind: previous?.kind || 'chat',
+    };
+    if (index >= 0) models[index] = selectedModel;
+    else models.push(selectedModel);
   }
+  const cache: CloudModelCache = { accountId: ownerId, models, currentModelId, updatedAt: Date.now() };
+  if (isElectron) await (window as any).superai.saveSettings({ cloudModelCache: cache });
+  return cache;
+}
+
+export async function syncLocalModelsToCloud(accountId: string | number): Promise<Settings> {
+  if (!isElectron) throw new Error('本地模型同步仅支持桌面端');
+  const bridge = (window as any).superai;
+  const settings: Settings = await bridge.getSettings();
+  const remoteModels = await listModels();
+  const linked = new Set<string>();
+  const normalizeUrl = (value: string) => String(value || '').trim().replace(/\/+$/, '');
+
+  for (const model of settings.models) {
+    const linkedModel = model.cloudId
+      ? remoteModels.find((candidate) => String(candidate.id) === model.cloudId)
+      : undefined;
+    const matchingModel = linkedModel || remoteModels.find((candidate) =>
+      !linked.has(String(candidate.id)) &&
+      (candidate.kind || 'chat') === (model.kind || 'chat') &&
+      normalizeUrl(candidate.baseUrl || '') === normalizeUrl(model.baseUrl) &&
+      candidate.modelName === model.model &&
+      (candidate.apiType || 'openai-completions') === model.api,
+    );
+    const patch = {
+      name: model.name,
+      baseUrl: model.baseUrl,
+      apiKey: model.apiKey,
+      modelName: model.model,
+      apiType: model.api,
+      kind: model.kind || 'chat',
+    };
+    const cloudId = matchingModel
+      ? String((await updateCloudModel(matchingModel.id, patch)).id)
+      : String((await createModel(patch)).id);
+    linked.add(cloudId);
+    if (model.cloudId !== cloudId) {
+      const updated = await bridge.models.update(model.id, { cloudId });
+      Object.assign(model, updated || { cloudId });
+    }
+  }
+
+  const current = settings.models.find((model) => model.id === settings.currentModelId);
+  if (current?.cloudId && current.kind !== 'image') await selectModel(Number(current.cloudId));
+  await syncCloudModelCache(accountId);
+  return await bridge.getSettings();
+}
+
+export async function getSettings(): Promise<Settings> {
+  const local: Settings = isElectron ? await (window as any).superai.getSettings() : { models: [], currentModelId: '', autoExec: true, uiTheme: 'warm', userAvatarDataUrl: '', assistantAvatarDataUrl: '' };
   return local;
 }
 
 export async function saveSettings(patch: Partial<Settings>): Promise<Settings> {
   if (isElectron) return await (window as any).superai.saveSettings(patch);
-  return { models: [], currentModelId: '', autoExec: patch.autoExec ?? true, uiTheme: patch.uiTheme ?? 'warm' };
+  return { models: [], currentModelId: '', autoExec: patch.autoExec ?? true, uiTheme: patch.uiTheme ?? 'warm', userAvatarDataUrl: patch.userAvatarDataUrl ?? '', assistantAvatarDataUrl: patch.assistantAvatarDataUrl ?? '' };
 }
 
 export async function getDefaultWorkspace(): Promise<string> {
@@ -124,46 +216,80 @@ export async function getDefaultWorkspace(): Promise<string> {
 
 // ===== 添加自定义模型（任意大模型，自行配置） =====
 export async function addModel(model: Omit<ModelConfig, 'id'>): Promise<ModelConfig> {
-  if (getStoredToken()) {
-    const m = await createModel({ name: model.name, baseUrl: model.baseUrl, apiKey: model.apiKey, modelName: model.model, apiType: model.api, kind: model.kind });
-    return cloudToModel(m);
+  if (isElectron) {
+    const m = await (window as any).superai.models.add(model);
+    if (getStoredToken()) {
+      try {
+        const created = await createModel({
+          name: model.name, baseUrl: model.baseUrl, apiKey: model.apiKey,
+          modelName: model.model, apiType: model.api, kind: model.kind,
+        });
+        await (window as any).superai.models.update(m.id, { cloudId: String(created.id) });
+        return { ...m, cloudId: String(created.id) };
+      } catch { /* 云端同步失败不阻塞本地添加 */ }
+    }
+    return m;
   }
-  if (isElectron) return await (window as any).superai.models.add(model);
   return { ...model, id: 'mock-' + Date.now() };
 }
 
 export async function removeModel(id: string): Promise<{ ok: boolean; error?: string }> {
-  if (getStoredToken()) {
-    try { await deleteCloudModel(Number(id)); return { ok: true }; }
-    catch (e: any) { return { ok: false, error: e.message || '删除失败' }; }
+  if (isElectron) {
+    const bridge = (window as any).superai;
+    const local = await bridge.models.get(id);
+    const cloudId = local?.cloudId;
+    const result = await bridge.models.remove(id);
+    if (getStoredToken() && cloudId) {
+      try {
+        const [models, selected, settings] = await Promise.all([
+          listModels(), getSelectedCredentials(), bridge.getSettings(),
+        ]);
+        const target = models.find((model) => String(model.id) === String(cloudId));
+        if (String(selected?.id) === String(cloudId) || target?.isDefault) {
+          const currentLocal = settings.models.find((model: ModelConfig) => model.id === settings.currentModelId);
+          const replacement = models.find((model) => String(model.id) === currentLocal?.cloudId && String(model.id) !== String(cloudId) && model.kind !== 'image')
+            || models.find((model) => String(model.id) !== String(cloudId) && model.kind !== 'image');
+          if (replacement) await selectModel(replacement.id);
+        }
+      } catch { /* deletion remains local-first */ }
+      try { await deleteCloudModel(Number(cloudId)); } catch { /* deletion remains local-first */ }
+    }
+    return result;
   }
-  if (isElectron) return await (window as any).superai.models.remove(id);
   return { ok: true };
 }
 
 export async function setCurrentModel(id: string): Promise<Settings> {
-  if (getStoredToken()) {
-    await selectModel(Number(id));
-    return await getSettings();  // 重新拉取（含云端 selected）
+  if (isElectron) {
+    const settings = await (window as any).superai.models.setCurrent(id);
+    const local = await (window as any).superai.models.get(id);
+    if (getStoredToken() && local?.cloudId) {
+      try { await selectModel(Number(local.cloudId)); } catch { /* 云端切换失败不阻塞本地切换 */ }
+    }
+    return settings;
   }
-  if (isElectron) return await (window as any).superai.models.setCurrent(id);
   return { models: [], currentModelId: id, autoExec: true };
 }
 
 export async function updateModel(id: string, patch: Partial<ModelConfig>): Promise<ModelConfig | null> {
-  if (getStoredToken()) {
-    const m = await updateCloudModel(Number(id), {
-      name: patch.name, baseUrl: patch.baseUrl, apiKey: patch.apiKey,
-      modelName: patch.model, apiType: patch.api, kind: patch.kind,
-    });
-    return cloudToModel(m);
+  if (isElectron) {
+    const m = await (window as any).superai.models.update(id, patch);
+    if (getStoredToken() && m?.cloudId) {
+      try {
+        await updateCloudModel(Number(m.cloudId), {
+          name: patch.name, baseUrl: patch.baseUrl, apiKey: patch.apiKey,
+          modelName: patch.model, apiType: patch.api, kind: patch.kind,
+        });
+      } catch { /* 云端同步失败不阻塞本地更新 */ }
+    }
+    return m;
   }
-  if (isElectron) return await (window as any).superai.models.update(id, patch);
   return null;
 }
 
-/** 测试模型连接：登录态走云端 /api/models/test（云端有明文 key，可测任意已存模型）；本地态走 IPC 直接发请求 */
+/** 桌面端用本机保存的凭证直测模型接口；纯浏览器环境走云端测试代理 */
 export async function testModel(cfg: { id?: string; baseUrl: string; apiKey?: string; model?: string; api: string }): Promise<{ ok: boolean; status: number; detail: string }> {
+  if (isElectron) return await (window as any).superai.models.test(cfg);
   if (getStoredToken()) {
     try {
       const r = await testCloudModel({
@@ -176,12 +302,20 @@ export async function testModel(cfg: { id?: string; baseUrl: string; apiKey?: st
       // 兼容多种返回字段
       const ok = r?.ok !== undefined ? !!r.ok : (r?.success !== undefined ? !!r.success : !r?.error);
       const detail = r?.detail || r?.message || r?.error || (ok ? '连接成功' : '测试失败');
-      return { ok, status: r?.status || 200, detail };
+      const statusFromDetail = typeof detail === 'string' ? detail.match(/HTTP\s+(\d{3})/i)?.[1] : undefined;
+      const networkFailure = typeof detail === 'string' && /连接失败|网络错误|Name or service not known|ECONN|ETIMEDOUT/i.test(detail);
+      const status = Number(statusFromDetail) || (networkFailure ? 0 : Number(r?.status) || (ok ? 200 : 0));
+      return { ok, status, detail };
     } catch (e: any) {
       return { ok: false, status: 0, detail: '云端测试失败：' + (e?.message || '未知') };
     }
   }
-  if (isElectron) return await (window as any).superai.models.test(cfg);
+  return { ok: false, status: 0, detail: '仅桌面端可测试连接' };
+}
+
+// 图像生成模型测试：走专用 image:test IPC（按生图协议探活，不复用 models:test 的 GET /models）
+export async function testImageModel(cfg: { baseUrl: string; apiKey?: string; model: string }): Promise<{ ok: boolean; status: number; detail: string }> {
+  if (isElectron) return await (window as any).superai.image.test(cfg);
   return { ok: false, status: 0, detail: '仅桌面端可测试连接' };
 }
 
@@ -530,6 +664,34 @@ export async function readSkill(name: string): Promise<{ meta: any; body: string
 export async function getSkillsDir(): Promise<string> {
   if (isElectron) return await (window as any).superai.skills.dir();
   return '';
+}
+
+// ===== dsh 插件管理 =====
+export interface DshBundle {
+  name: string;
+  version: string | null;
+  enabled: boolean;
+  isOfficial: boolean;
+}
+
+export async function listBundles(): Promise<DshBundle[]> {
+  if (isElectron) return await (window as any).superai.plugins.list();
+  return [];
+}
+
+export async function installBundle(spec: string, registry?: string): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+  if (isElectron) return await (window as any).superai.plugins.install(spec, registry);
+  return { ok: false, stdout: '', stderr: '仅桌面端支持' };
+}
+
+export async function removeBundle(name: string): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+  if (isElectron) return await (window as any).superai.plugins.remove(name);
+  return { ok: false, stdout: '', stderr: '仅桌面端支持' };
+}
+
+export async function setBundleEnabled(name: string, enabled: boolean): Promise<boolean> {
+  if (isElectron) return await (window as any).superai.plugins.setEnabled(name, enabled);
+  return false;
 }
 
 // ===== 图像生成模型同步（登录态：从云端拉取 kind=image 模型的明文 → 写本地 imageModel 缓存） =====

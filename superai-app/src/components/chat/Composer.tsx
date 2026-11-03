@@ -117,10 +117,16 @@ export default function Composer({
           </div>
         </div>
         <div className="cfoot">
-          <span>{running ? '运行中 · 可插话引导，或点 ■ 停止' : 'ENTER 发送'}</span>
-          {!running && <span>SHIFT+ENTER 换行</span>}
-          <div style={{ flex: 1 }} />
-          <span>读写范围 {workspace || '未选择'}</span>
+          {running ? (
+            <span className="cfoot-state">运行中 · 可插话引导，或点 ■ 停止</span>
+          ) : (
+            <>
+              <span className="cfoot-shortcut"><kbd>Enter</kbd> 发送</span>
+              <span className="cfoot-shortcut"><kbd>Shift</kbd><i>+</i><kbd>Enter</kbd> 换行</span>
+            </>
+          )}
+          <div className="grow" />
+          <span className="cfoot-scope">读写范围 <span>{workspace || '未选择'}</span></span>
         </div>
       </div>
     </div>
